@@ -1,0 +1,239 @@
+import times, strutils, os, macros, imageman, strformat
+import sigui/[uibase, animations], siwin, fusion/matching
+export uibase, animations
+import screenRecording
+
+{.experimental: "callOperator".}
+
+const width {.intdefine.} = 1280
+const height {.intdefine.} = 720
+const pxRatio {.strdefine.} = "1"
+const fontDirectory {.strdefine.} = "fonts"
+const fps {.intdefine.} = 60
+const outFile {.strdefine.} = "out.mp4"
+
+var sceneWidth*: float = width  # in pixels
+var sceneHeight*: float = height  # in pixels
+
+
+proc w*(lit: float): float =
+  lit * sceneWidth
+
+proc h*(lit: float): float =
+  lit * sceneHeight
+
+
+proc lwh*(lit: float): float =
+  lit * min(sceneWidth, sceneHeight)
+
+proc gwh*(lit: float): float =
+  lit * max(sceneWidth, sceneHeight)
+
+
+var pixelRatio*: float = pxRatio.parseFloat
+var ptRatio*: float = 0.03.lwh
+var changeDuration*: Duration = 0.2's
+
+
+proc px*(lit: float): float =
+  lit * pixelRatio
+
+proc pt*(lit: float): float =
+  lit * ptRatio
+
+
+proc useFont*(name: string): Typeface =
+  parseTtf(readFile fontDirectory / name & ".ttf")
+
+proc `()`*(typeface: Typeface, size: float): Font =
+  result = newFont(typeface)
+  result.size = size
+
+
+converter toColor*(s: string): chroma.Color =
+  case s.len
+  of 3:
+    result = chroma.Color(
+      r: ($s[0]).parseHexInt.float32 / 15.0,
+      g: ($s[1]).parseHexInt.float32 / 15.0,
+      b: ($s[2]).parseHexInt.float32 / 15.0,
+      a: 1,
+    )
+  of 4:
+    result = chroma.Color(
+      r: ($s[0]).parseHexInt.float32 / 15.0,
+      g: ($s[1]).parseHexInt.float32 / 15.0,
+      b: ($s[2]).parseHexInt.float32 / 15.0,
+      a: ($s[3]).parseHexInt.float32 / 15.0,
+    )
+  of 6:
+    result = chroma.Color(
+      r: (s[0..1].parseHexInt.float32) / 255.0,
+      g: (s[2..3].parseHexInt.float32) / 255.0,
+      b: (s[4..5].parseHexInt.float32) / 255.0,
+      a: 1,
+    )
+  of 8:
+    result = chroma.Color(
+      r: (s[0..1].parseHexInt.float32) / 255.0,
+      g: (s[2..3].parseHexInt.float32) / 255.0,
+      b: (s[4..5].parseHexInt.float32) / 255.0,
+      a: (s[6..7].parseHexInt.float32) / 255.0,
+    )
+  else:
+    raise ValueError.newException("invalid color: " & s)
+
+
+let win = newOpenglContext().newUiWindow
+
+
+var this* = ClipRect()
+this.wh[] = vec2(width.float, height.float)
+
+var timepoint*: Duration
+
+
+var timeactions*: seq[(Duration, proc())]
+
+
+macro byTime*(t, body: untyped): untyped =
+  let tp = ident "timepoint"
+  quote do:
+    `tp` = `t`
+    block:
+      var `tp` {.used.} = `tp`
+      timeactions.add (`tp`, proc() {.closure.} =
+        this.makeLayout(`body`)
+      )
+
+
+macro afterTime*(t, body: untyped): untyped =
+  let tp = ident "timepoint"
+  quote do:
+    `tp` = `tp` + `t`
+    block:
+      var `tp` {.used.} = `tp`
+      timeactions.add (`tp`, proc() {.closure.} =
+        this.makeLayout(`body`)
+      )
+
+
+macro change*(what, toVal: untyped): untyped =
+  case what
+  of BracketExpr[@what]:
+    quote do:
+      let a = Animation[typeof(`what`[])](
+        action: (proc(x: typeof(`what`[])) =
+          `what`[] = x
+        ),
+      )
+      a.duration{} = changeDuration
+      a.a{} = `what`[]
+      a.b{} = `toVal`
+      a.interpolation[] = outSquareInterpolation
+      this.addChild a
+      start a
+  else:
+    quote do:
+      let a = Animation[typeof(`what`)](
+        action: (proc(x: typeof(`what`)) =
+          `what` = x
+        ),
+      )
+      a.duration{} = changeDuration
+      a.a{} = `what`[]
+      a.b{} = `toVal`
+      a.interpolation[] = outSquareInterpolation
+      this.addChild a
+      start a
+
+
+proc appear*[T: UiObj](obj: T, slideUp: float = 0) =
+  if slideUp != 0:
+    let prevY = obj.y[]
+    obj.y[] = prevY + slideUp
+    change obj.y[]: prevY
+  
+  var prevColor = obj.color[]
+  var newColor = prevColor
+  prevColor.a = 0
+  newColor.a = 1
+  obj.color[] = prevColor
+  change obj.color[]: newColor
+
+
+proc disappear*[T: UiObj](obj: T, slideDown: float = 0) =
+  if slideDown != 0:
+    let prevY = obj.y[]
+    let a = Animation[float](
+      action: (proc(x: float) =
+        obj.y[] = x
+      ),
+    )
+    a.duration{} = changeDuration
+    a.a{} = prevY
+    a.b{} = prevY + slideDown
+    a.interpolation[] = outSquareInterpolation
+    this.addChild a
+    start a
+    a.ended.connectTo obj:
+      obj.y[] = prevY
+  
+  var prevColor = obj.color[]
+  var newColor = prevColor
+  prevColor.a = 1
+  newColor.a = 0
+  obj.color[] = prevColor
+  change obj.color[]: newColor
+
+
+var finished = false
+
+proc finish*() =
+  finished = true
+
+
+proc render*() =
+  win.addChild this
+  init this
+
+  var frame = 0
+  var time: Duration
+  var img = imageman.initImage[imageman.ColorRGBAU](width, height)
+
+  var imagepaths: seq[string]
+
+  if dirExists("/tmp/animaui"):
+    removeDir "/tmp/animaui"
+  createDir "/tmp/animaui"
+
+  while not finished:
+    defer:
+      inc frame
+      time += initDuration(seconds=1) div fps
+
+    block:
+      var i = 0
+      while i < timeactions.len:
+        if timeactions[i][0] <= time:
+          timeactions[i][1]()
+          timeactions.del i
+        else:
+          inc i
+    
+    win.draw(win.ctx)
+
+    this.getPixels(img.data)
+    flipVert img
+
+    savePng(img, "/tmp/animaui/" & $frame & ".png")
+    imagepaths.add("file /tmp/animaui/" & $frame & ".png")
+
+    win.onTick.emit(TickEvent(window: win.siwinWindow, deltaTime: initDuration(seconds=1) div fps))
+
+  writeFile "/tmp/animaui/images.txt", imagepaths.join("\n")
+
+  discard execShellCmd &"ffmpeg -r {fps} -f concat -safe 0 -i /tmp/animaui/images.txt -c:v libx264 -pix_fmt yuv420p {outfile}"
+
+  removeDir "/tmp/animaui"
+
