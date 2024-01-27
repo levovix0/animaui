@@ -14,13 +14,17 @@ byTime 0's:
     this.centerIn parent
     this.color[] = "fff"
 
-    this.appear(slideUp=0.2.h)
+    this.appear(slideUp=0.1.h)
 
     afterTime 1's:
-      code.disappear()
+      code.disappear(slideUp=0.1.h)
+
+    afterTime 1's:
+      code.appear(slideUp=0.1.h)
 
 
-afterTime 2's:
+afterTime 3's:
   finish()
 
 render()
+

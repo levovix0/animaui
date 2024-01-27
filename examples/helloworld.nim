@@ -1,45 +1,52 @@
 import animaui
 
-let comfortaa = useFont "Comfortaa"
+let firaCode = useFont "FiraCode"
 
-ptRatio = 0.05.lwh
+byTime 0's:
+  addToScene:
+    - UiRect():
+      this.fill parent
+      this.color[] = "202020"
 
-by 0's:
-  add Rect:
-    fill: parent
-    color: "202020"
+    - Code() as code:
+      this.centerIn parent
 
-  add Code as code:
-    syntaxHighlignting: nim
-    text: """
-      echo "hello animaui!"
+      # this.syntaxHighlignting[] = nim
+      this.font[] = firaCode(3.pt)
 
-      if you.like(it):
-        please star_this_repo()
-    """
-    font: comfortaa(3.pt)
+      this.text[] = """
+        echo "hello animaui!"
+        if you.like(it):
+          please star_this_repo()
+      """.stripCode
 
-    centerX: parent.center
-    centerY: parent.center
-
-    this.textAutoConstruct(total = 2's, pauseTotal = 0.5's, animation = {slideUp, becomeOpaque})
-
-    after 3's:
-      this.disappear({slideDown, becomeTransparent})
-  
-  add Rect:
-    h: 1.px
-    centerX: parent
-    top: code.bottom + 1.pt
+      this.textAutoConstruct(
+        lineByLine,
+        timepoint,
+        total = 2's, pauseTotal = 1's,
+        slideUp=0.1.h
+      )
     
-    color: "808080"
+    - UiRect() as rect:
+      this.h[] = 0.2.pt
+      this.centerX = parent.center
+      this.top = code.bottom + 1.pt
+      
+      this.color[] = "808080"
 
-    after 2's:
-      move w: code.w
+    afterTime 2's:
+      change rect.w[]: code.w[]
+
+    afterTime 2's:
+      for x in code.textObj[].childs:
+        x.UiText.disappear(slideUp = 0.1.h)
+
+      rect.disappear()
 
 
-after 4's:
+afterTime 5's:
   finish()
 
 
 render()
+
