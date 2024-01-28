@@ -21,8 +21,7 @@ byTime 0's:
       """.stripCode
 
       this.textAutoConstruct(
-        lineByLine,
-        timepoint,
+        lineByLine, timepoint,
         total = 2's, pauseTotal = 1's,
         slideUp=0.1.h
       )
@@ -43,9 +42,8 @@ byTime 0's:
 
       rect.disappear()
 
-
-afterTime 5's:
-  finish()
+    afterTime 1's:
+      finish()
 
 
 render()

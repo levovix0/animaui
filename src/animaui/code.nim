@@ -38,10 +38,15 @@ type
     sText*: ColorRGB
 
 
+  CodeLanguage* = enum
+    nim
+    text
+
   Code* = ref object of UiObj
     text*: Property[string]
     font*: Property[Font]
     textObj*: CustomProperty[UiObj]
+    syntax*: Property[CodeLanguage]
   
 
   TextConstructMode* = enum
@@ -117,7 +122,9 @@ method init*(this: Code) =
       if root.font != nil:
         let text = root.text[].newText
         let typeset = root.font[].typeset(root.text[])
-        var highlighting = parseNimCode(text, NimParseState(), text.len).segments.colors
+        var highlighting = case root.syntax[]
+          of nim: parseNimCode(text, NimParseState(), text.len).segments.colors
+          of text: sText.color.repeat(text.len)
         var maxw, maxh: float32
 
         for i, x in typeset.selectionRects:
@@ -156,7 +163,7 @@ proc textAutoConstruct*(
   of lineByLine:
     let lineCount = this.text[].splitLines.len
     let appearTime = (total - pauseTotal) div lineCount
-    let appearPause = pauseTotal div (lineCount-1)
+    let appearPause = if lineCount < 2: 0's else: pauseTotal div (lineCount-1)
     
     var line = 0
 

@@ -13,3 +13,4 @@ requires "nim >= 2.0.2"
 requires "sigui >= 0.1"  # для работы с графикой/UI
 requires "imageman"  # для записи изображений
 requires "cligen"  # для CLI
+# requires "ffmpeg"  # для работы с видео
