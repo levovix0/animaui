@@ -209,10 +209,10 @@ proc disappear*[T: UiObj](
       a.a{} = prev
       a.b{} = equa(prev, slv)
       a.interpolation[] = outSquareInterpolation
-      this.addChild a
-      start a
       a.ended.connectTo obj:
         prop[] = prev
+      this.addChild a
+      start a
 
   mkappear slideUp, obj.y, `-`
   mkappear slideDown, obj.y, `+`
