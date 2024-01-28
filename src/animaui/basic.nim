@@ -1,7 +1,9 @@
-import times, strutils, os, macros, imageman, strformat
+import times, strutils, os, macros, imageman
 import sigui/[uibase, animations], siwin, fusion/matching
 export uibase, animations
-import screenRecording
+when not defined(preview):
+  import strformat
+  import screenRecording
 
 {.experimental: "callOperator".}
 
@@ -9,8 +11,9 @@ const width {.intdefine.} = 1280
 const height {.intdefine.} = 720
 const pxRatio {.strdefine.} = "1"
 const fontDirectory {.strdefine.} = "fonts"
-const fps {.intdefine.} = 60
-const outFile {.strdefine.} = "out.mp4"
+when not defined(preview):
+  const fps {.intdefine.} = 60
+  const outFile {.strdefine.} = "out.mp4"
 
 var sceneWidth*: float = width  # in pixels
 var sceneHeight*: float = height  # in pixels
@@ -84,7 +87,11 @@ converter toColor*(s: string): chroma.Color =
     raise ValueError.newException("invalid color: " & s)
 
 
-let win = newOpenglContext().newUiWindow
+let win = 
+  when defined(preview): 
+    newOpenglWindow(size = ivec2(width, height)).newUiWindow
+  else:
+    newOpenglContext().newUiWindow
 
 
 var this* = ClipRect()
@@ -224,52 +231,76 @@ var finished = false
 
 proc finish*() =
   finished = true
+  when defined(preview):
+    close win.siwinWindow
 
 
 proc render*() =
   win.addChild this
   init this
 
-  var frame = 0
-  var time: Duration
-  var img = imageman.initImage[imageman.ColorRGBAU](width, height)
+  when not defined(preview):
+    var frame = 0
+    var time: Duration
+    var img = imageman.initImage[imageman.ColorRGBAU](width, height)
 
-  var imagepaths: seq[string]
+    var imagepaths: seq[string]
 
-  if dirExists("/tmp/animaui"):
+    if dirExists("/tmp/animaui"):
+      removeDir "/tmp/animaui"
+    createDir "/tmp/animaui"
+
+    while not finished:
+      defer:
+        inc frame
+        time += initDuration(seconds=1) div fps
+
+      if frame mod 8 == 0:
+        echo time
+
+      block:
+        var i = 0
+        while i < timeactions.len:
+          if timeactions[i][0] <= time:
+            timeactions[i][1]()
+            timeactions.del i
+          else:
+            inc i
+      
+      win.draw(win.ctx)
+
+      this.getPixels(img.data)
+      flipVert img
+
+      savePng(img, "/tmp/animaui/" & $frame & ".png")
+      imagepaths.add("file /tmp/animaui/" & $frame & ".png")
+
+      win.onTick.emit(TickEvent(window: win.siwinWindow, deltaTime: initDuration(seconds=1) div fps))
+
+    writeFile "/tmp/animaui/images.txt", imagepaths.join("\n")
+
+    discard execShellCmd &"ffmpeg  -hide_banner -loglevel panic -r {fps} -f concat -safe 0 -i /tmp/animaui/images.txt -c:v libx264 -pix_fmt yuv420p {outfile}"
+
     removeDir "/tmp/animaui"
-  createDir "/tmp/animaui"
+  
+  else:
+    var frame = 0
+    var time: Duration
 
-  while not finished:
-    defer:
+    win.onTick.connectTo win, val:
       inc frame
-      time += initDuration(seconds=1) div fps
+      time += val.deltaTime
 
-    if frame mod 8 == 0:
-      echo time
+      block:
+        var i = 0
+        while i < timeactions.len:
+          if timeactions[i][0] <= time:
+            timeactions[i][1]()
+            timeactions.del i
+          else:
+            inc i
 
-    block:
-      var i = 0
-      while i < timeactions.len:
-        if timeactions[i][0] <= time:
-          timeactions[i][1]()
-          timeactions.del i
-        else:
-          inc i
-    
-    win.draw(win.ctx)
+      redraw win
 
-    this.getPixels(img.data)
-    flipVert img
-
-    savePng(img, "/tmp/animaui/" & $frame & ".png")
-    imagepaths.add("file /tmp/animaui/" & $frame & ".png")
-
-    win.onTick.emit(TickEvent(window: win.siwinWindow, deltaTime: initDuration(seconds=1) div fps))
-
-  writeFile "/tmp/animaui/images.txt", imagepaths.join("\n")
-
-  discard execShellCmd &"ffmpeg  -hide_banner -loglevel panic -r {fps} -f concat -safe 0 -i /tmp/animaui/images.txt -c:v libx264 -pix_fmt yuv420p {outfile}"
-
-  removeDir "/tmp/animaui"
+    run win.siwinWindow
 
