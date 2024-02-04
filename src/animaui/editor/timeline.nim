@@ -1,4 +1,4 @@
-import std/[times, strutils]
+import std/[times, strutils, sequtils]
 import sigui/[uibase, mouseArea], siwin
 import ../[utils]
 import ./[fonts, keyframes]
@@ -51,7 +51,7 @@ proc newTimelinePanel*(fonts: Fonts): TimelinePanel =
       this.fillVertical parent
       this.w[] = 1
       this.binding visibility:
-        if mouse.hovered[]: Visibility.visible
+        if mouse.hovered[] and not mouse.pressed[]: Visibility.visible
         else: Visibility.hiddenTree
       this.binding x: vec2(mouse.mouseX[], 0).posToLocal(parent).x
       this.color[] = "777"
@@ -59,7 +59,22 @@ proc newTimelinePanel*(fonts: Fonts): TimelinePanel =
       proc updateX =
         if not mouse.pressed[]: return
         let d = vec2(mouse.mouseX[], 0).posToLocal(parent).x
-        root.currentTime[] = initDuration(microseconds=1) * (((-startFromPixel[] + d) * (timeScale[] / pixelsUntilText[])) * 1_000_000).int
+        let time = initDuration(microseconds=1) * (((-startFromPixel[] + d) * (timeScale[] / pixelsUntilText[])) * 1_000_000).int
+        if Key.lcontrol in this.parentWindow.keyboard.pressed or Key.rcontrol in this.parentWindow.keyboard.pressed:
+          # align to nearest keyframe
+          let nearestDistance = (
+            root.actions[].mapit(it.time.inMilliseconds) &
+            root.actions[].mapit(it.time.inMilliseconds + it.changeDuration.toDuration.inMilliseconds) &
+            @[
+              int64 (time.inMilliseconds / 1000 / timeScale[]).int.float * 1000 * timeScale[],
+              int64 ((time.inMilliseconds / 1000 / timeScale[]).int.float * 1000 + 1000) * timeScale[],
+            ]
+          )
+            .mapit(it - time.inMilliseconds)
+            .foldl(if abs(a) < abs(b): a else: b)
+          root.currentTime[] = time + initDuration(milliseconds=nearestDistance)
+        else:
+          root.currentTime[] = time
       
       mouse.mouseX.changed.connectTo this: updateX()
       mouse.pressed.changed.connectTo this:
