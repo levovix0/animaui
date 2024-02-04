@@ -177,6 +177,11 @@ proc animaui =
       this.fillHorizontal parent
       this.bottom = parent.bottom
       this.h[] = 150
+
+      this.parentUiWindow.onTick.connectTo this, e:
+        if timelinePanel.playing[]:
+          timelinePanel.currentTime[] = timelinePanel.currentTime[] + e.deltaTime
+          redraw this
     
     - Toolbar() as toolbar:
       this.top = parent.top

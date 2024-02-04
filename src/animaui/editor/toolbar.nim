@@ -1,4 +1,4 @@
-import sigui/[uibase, mouseArea, layouts]
+import sigui/[uibase, mouseArea, layouts], siwin
 import ../utils
 
 type
@@ -48,6 +48,25 @@ method init*(this: Toolbar) =
       this.fill parent
       this.spacing[] = 0
       this.orientation[] = vertical
+
+      this.onSignal.connectTo this, signal:
+        if not(signal of WindowEvent): return
+        if not(signal.WindowEvent.event of (ref KeyEvent)): return
+        let k = ((ref KeyEvent)signal.WindowEvent.event).key
+        let pressed = ((ref KeyEvent)signal.WindowEvent.event).pressed
+        let p =
+          if pressed and {k} == this.parentWindow.keyboard.pressed: true
+          elif (not pressed) and this.parentWindow.keyboard.pressed.len == 0: false
+          else: return
+
+        case ((ref KeyEvent)signal.WindowEvent.event).key
+        of Key.r:
+          if p: root.currentTool[] = ToolKind.rect
+          else: root.currentTool[] = ToolKind.arrow
+        # of Key.t:
+        #   if p: root.currentTool[] = ToolKind.text
+        #   else: root.currentTool[] = ToolKind.arrow
+        else: discard
 
       - newToolbarTool(arrowIcon):
         this.binding w: parent.w[]

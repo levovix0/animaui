@@ -1,5 +1,5 @@
 import std/[times, strutils, sequtils]
-import sigui/[uibase, mouseArea], siwin
+import sigui/[uibase, mouseArea, globalShortcut], siwin
 import ../[utils]
 import ./[fonts, keyframes]
 
@@ -7,6 +7,7 @@ type
   TimelinePanel* = ref object of UiRect
     actions*: Property[seq[Keyframe[void]]]
     currentTime*: Property[Duration]
+    playing*: Property[bool]
     
     actionsView: CustomProperty[Uiobj]
 
@@ -72,7 +73,7 @@ proc newTimelinePanel*(fonts: Fonts): TimelinePanel =
           )
             .mapit(it - time.inMilliseconds)
             .foldl(if abs(a) < abs(b): a else: b)
-          root.currentTime[] = time + initDuration(milliseconds=nearestDistance)
+          root.currentTime[] = initDuration(milliseconds = time.inMilliseconds + nearestDistance)
         else:
           root.currentTime[] = time
       
@@ -165,3 +166,23 @@ proc newTimelinePanel*(fonts: Fonts): TimelinePanel =
     - MouseArea() as mouse:
       this.fill parent
       this.acceptedButtons[] = {MouseButton.left}
+    
+    - globalShortcut({Key.q}):
+      this.activated.connectTo this:
+        root.currentTime[] = root.currentTime[] - initDuration(microseconds = int (timeScale[] / 20 * 1_000_000))
+    
+    - globalShortcut({Key.e}):
+      this.activated.connectTo this:
+        root.currentTime[] = root.currentTime[] + initDuration(microseconds = int (timeScale[] / 20 * 1_000_000))
+    
+    - globalShortcut({Key.lshift, Key.q}):
+      this.activated.connectTo this:
+        root.currentTime[] = root.currentTime[] - initDuration(microseconds = int (timeScale[] * 1_000_000))
+    
+    - globalShortcut({Key.lshift, Key.e}):
+      this.activated.connectTo this:
+        root.currentTime[] = root.currentTime[] + initDuration(microseconds = int (timeScale[] * 1_000_000))
+    
+    - globalShortcut({Key.space}):
+      this.activated.connectTo this:
+        root.playing[] = not root.playing[]
