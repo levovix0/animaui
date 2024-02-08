@@ -52,12 +52,9 @@ method init*(this: Toolbar) =
       this.onSignal.connectTo this, signal:
         if not(signal of WindowEvent): return
         if not(signal.WindowEvent.event of (ref KeyEvent)): return
-        let k = ((ref KeyEvent)signal.WindowEvent.event).key
         let pressed = ((ref KeyEvent)signal.WindowEvent.event).pressed
-        let p =
-          if pressed and {k} == this.parentWindow.keyboard.pressed: true
-          elif (not pressed) and this.parentWindow.keyboard.pressed.len == 0: false
-          else: return
+        if ((ref KeyEvent)signal.WindowEvent.event).repeated: return
+        let p = pressed
 
         case ((ref KeyEvent)signal.WindowEvent.event).key
         of Key.r:

@@ -41,24 +41,24 @@ proc newButton*(icon: string): Button =
     this.binding color:
       if mouse.pressed[]:
         if this.accent[]: c"#C11B2D"
-        else: c"26"
+        else: c"36"
       elif mouse.hovered[]:
         if this.accent[]: c"#E03649"
-        else: c"30"
+        else: c"40"
       else:
-        if this.accent[]: c"20"
-        else: c"20"
+        if this.accent[]: c"30"
+        else: c"30"
 
 
 proc newWindowHeader*(): WindowHeader =
   result = WindowHeader()
   result.makeLayout:
-    this.binding color: c"20"
+    this.binding color: c"30"
 
     - newMouseArea():
       this.fill parent
 
-      this.dragged.connectTo root:
+      this.grabbed.connectTo root:
         root.parentWindow.startInteractiveMove(some e)
       
       this.clicked.connectTo root:

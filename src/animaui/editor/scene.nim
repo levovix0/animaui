@@ -127,3 +127,8 @@ method draw*(this: SceneObject, ctx: DrawContext) =
   if this.visibility[] == visible:
     draw(this.internalObject, ctx)
   this.drawAfter(ctx)
+
+
+method recieve*(this: SceneObject, signal: Signal) =
+  if this.internalObject != nil:
+    this.internalObject.recieve(signal)

@@ -54,12 +54,12 @@ proc newTimelinePanel*(fonts: Fonts): TimelinePanel =
       this.binding visibility:
         if mouse.hovered[] and not mouse.pressed[]: Visibility.visible
         else: Visibility.hiddenTree
-      this.binding x: vec2(mouse.mouseX[], 0).posToLocal(parent).x
+      this.binding x: mouse.mouseX[]
       this.color[] = "777"
 
       proc updateX =
         if not mouse.pressed[]: return
-        let d = vec2(mouse.mouseX[], 0).posToLocal(parent).x
+        let d = mouse.mouseX[]
         let time = initDuration(microseconds=1) * (((-startFromPixel[] + d) * (timeScale[] / pixelsUntilText[])) * 1_000_000).int
         if Key.lcontrol in this.parentWindow.keyboard.pressed or Key.rcontrol in this.parentWindow.keyboard.pressed:
           # align to nearest keyframe

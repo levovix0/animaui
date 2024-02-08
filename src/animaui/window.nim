@@ -7,7 +7,6 @@ type
     borderWidth: float32
     windowFrame {.cursor.}: UiRect
     clipRect {.cursor.}: ClipRect
-    wasChangedCursor: bool
     mouse: MouseArea
 
 
@@ -26,70 +25,41 @@ proc updateChilds(this: DmusicWindow, initial = false) =
 
 method recieve*(this: DmusicWindow, signal: Signal) =
   case signal
-  of of WindowEvent(event: @ea is of MouseMoveEvent(), handled: false):
-    let e = (ref MouseMoveEvent)ea
-    if this.mouse.hovered and MouseButton.left in e.window.mouse.pressed:
-      if this.edge != 0:
-        e.window.startInteractiveResize(
-          case this.edge
-          of 1: Edge.top
-          of 2: Edge.topRight
-          of 3: Edge.right
-          of 4: Edge.bottomRight
-          of 5: Edge.bottom
-          of 6: Edge.bottomLeft
-          of 7: Edge.left
-          of 8: Edge.topLeft
-          else: Edge.left
-        )
-        signal.WindowEvent.handled = true
-      else:
-        procCall this.super.recieve(signal)
+  of of GetActiveCursor():
+    let pos = this.parentWindow.mouse.pos.vec2.posToLocal(this)
+    let box = rect(this.xy[], this.wh[])
+
+    let left = pos.x in 0'f32..(box.x + this.borderWidth)
+    let top = pos.y in 0'f32..(box.y + this.borderWidth)
+    let right = pos.x in (box.w - this.borderWidth)..(box.w)
+    let bottom = pos.y in (box.h - this.borderWidth)..(box.h)
+
+    if left and top:
+      signal.GetActiveCursor.cursor = (ref Cursor)(kind: builtin, builtin: sizeTopLeft)
+      this.edge = 8
+    elif right and top:
+      signal.GetActiveCursor.cursor = (ref Cursor)(kind: builtin, builtin: sizeTopRight)
+      this.edge = 2
+    elif right and bottom:
+      signal.GetActiveCursor.cursor = (ref Cursor)(kind: builtin, builtin: sizeBottomRight)
+      this.edge = 4
+    elif left and bottom:
+      signal.GetActiveCursor.cursor = (ref Cursor)(kind: builtin, builtin: sizeBottomLeft)
+      this.edge = 6
+    elif left:
+      signal.GetActiveCursor.cursor = (ref Cursor)(kind: builtin, builtin: sizeHorisontal)
+      this.edge = 7
+    elif top:
+      signal.GetActiveCursor.cursor = (ref Cursor)(kind: builtin, builtin: sizeVertical)
+      this.edge = 1
+    elif right:
+      signal.GetActiveCursor.cursor = (ref Cursor)(kind: builtin, builtin: sizeHorisontal)
+      this.edge = 3
+    elif bottom:
+      signal.GetActiveCursor.cursor = (ref Cursor)(kind: builtin, builtin: sizeVertical)
+      this.edge = 5
     else:
-      let pos = e.pos.vec2.posToLocal(this)
-      let box = rect(this.xy[], this.wh[])
-
-      let left = pos.x in 0'f32..(box.x + this.borderWidth)
-      let top = pos.y in 0'f32..(box.y + this.borderWidth)
-      let right = pos.x in (box.w - this.borderWidth)..(box.w)
-      let bottom = pos.y in (box.h - this.borderWidth)..(box.h)
-
-      if left and top:
-        e.window.cursor = Cursor(kind: builtin, builtin: sizeTopLeft)
-        this.edge = 8
-        this.wasChangedCursor = true
-      elif right and top:
-        e.window.cursor = Cursor(kind: builtin, builtin: sizeTopRight)
-        this.edge = 2
-        this.wasChangedCursor = true
-      elif right and bottom:
-        e.window.cursor = Cursor(kind: builtin, builtin: sizeBottomRight)
-        this.edge = 4
-        this.wasChangedCursor = true
-      elif left and bottom:
-        e.window.cursor = Cursor(kind: builtin, builtin: sizeBottomLeft)
-        this.edge = 6
-        this.wasChangedCursor = true
-      elif left:
-        e.window.cursor = Cursor(kind: builtin, builtin: sizeHorisontal)
-        this.edge = 7
-        this.wasChangedCursor = true
-      elif top:
-        e.window.cursor = Cursor(kind: builtin, builtin: sizeVertical)
-        this.edge = 1
-        this.wasChangedCursor = true
-      elif right:
-        e.window.cursor = Cursor(kind: builtin, builtin: sizeHorisontal)
-        this.edge = 3
-        this.wasChangedCursor = true
-      elif bottom:
-        e.window.cursor = Cursor(kind: builtin, builtin: sizeVertical)
-        this.edge = 5
-        this.wasChangedCursor = true
-      elif this.wasChangedCursor:
-        e.window.cursor = Cursor(kind: builtin, builtin: arrow)
-        this.edge = 0
-        this.wasChangedCursor = false
+      this.edge = 0
       procCall this.super.recieve(signal)
 
   of of WindowEvent(event: @ea is of MaximizedChangedEvent()):
@@ -105,7 +75,7 @@ method recieve*(this: DmusicWindow, signal: Signal) =
 
 proc createWindow*(rootObj: Uiobj): UiWindow =
   result = newOpenglWindow(
-    title = "DMusic",
+    title = "Animaui",
     # size = ivec2(config.window_width[].int32, config.window_height[].int32),
     transparent = true,
     frameless = true,
@@ -134,9 +104,25 @@ proc createWindow*(rootObj: Uiobj): UiWindow =
     - dmWin:
       this.fill(parent)
 
-      - newMouseArea():
+      - MouseArea():
         this.fill(parent)
         dmWin.mouse = this
+
+        this.grabbed.connectTo dmWin, pos:
+          if dmWin.edge != 0:
+            this.parentWindow.startInteractiveResize(
+              case dmWin.edge
+              of 1: Edge.top
+              of 2: Edge.topRight
+              of 3: Edge.right
+              of 4: Edge.bottomRight
+              of 5: Edge.bottom
+              of 6: Edge.bottomLeft
+              of 7: Edge.left
+              of 8: Edge.topLeft
+              else: Edge.left,
+              some pos
+            )
 
         - ClipRect():
           dmWin.clipRect = this
