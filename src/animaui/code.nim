@@ -114,7 +114,6 @@ proc colors*(scs: openarray[CodeKind]): seq[ColorRgb] =
 
 
 method init*(this: Code) =
-  if this.initialized: return
   procCall this.super.init()
 
   this.makeLayout:

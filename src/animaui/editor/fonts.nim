@@ -1,5 +1,6 @@
 import pixie
 
-type
-  Fonts* = ref object
-    firaCode*: Typeface
+var
+  comfortaa*: Typeface
+  firaCode*: Typeface
+  notoSans*: Typeface

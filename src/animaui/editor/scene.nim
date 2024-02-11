@@ -1,6 +1,6 @@
-import times
-import sigui/[uibase, animations]
-import ./keyframes
+import times, os, strutils, strformat
+import sigui/[uibase, animations], imageman
+import ./[keyframes, screenRecording]
 
 type
   SceneObjectKind* = enum
@@ -15,13 +15,16 @@ type
     kind*: Property[SceneObjectKind]
     selected*: Property[bool]
 
-    color*: Property[Color]
+    color*: Property[chroma.Color]
 
     xKeyframes*: seq[Keyframe[float32]]
     yKeyframes*: seq[Keyframe[float32]]
     wKeyframes*: seq[Keyframe[float32]]
     hKeyframes*: seq[Keyframe[float32]]
-    colorKeyframes*: seq[Keyframe[Color]]
+    colorKeyframes*: seq[Keyframe[chroma.Color]]
+
+registerComponent Scene
+registerComponent SceneObject
 
 
 proc setTime*(this: SceneObject, time: Duration) =
@@ -48,7 +51,6 @@ proc setTime*(this: Scene, time: Duration) =
 
 
 method init*(this: SceneObject) =
-  if this.initialized: return
   procCall this.super.init()
 
   proc parentScene(this: SceneObject): Scene =
@@ -57,7 +59,7 @@ method init*(this: SceneObject) =
       if x of Scene: return Scene(x)
       x = x.parent
 
-  proc queryRect(this: SceneObject): Rect =
+  proc queryRect(this: SceneObject): bumpy.Rect =
     let scene = this.parentScene
     if scene == nil: return
     let ptSize = min(scene.w[], scene.h[]) / 50
@@ -132,3 +134,127 @@ method draw*(this: SceneObject, ctx: DrawContext) =
 method recieve*(this: SceneObject, signal: Signal) =
   if this.internalObject != nil:
     this.internalObject.recieve(signal)
+
+
+proc render*(scene: Scene, resolution: Vec2, outfile: string, fps: int, fromTime, toTime: Duration) =
+  let prevParent = scene.parent
+  let prevXy = scene.xy[]
+  let prevWh = scene.wh[]
+
+  defer:
+    scene.parent = prevParent
+    scene.xy[] = prevXy
+    scene.wh[] = prevWh
+
+  scene.parent = nil
+
+  let renderarea = ClipRect()
+  renderarea.makeLayout:
+    wh = resolution
+    - UiRect():
+      this.fill parent
+      color = "202020"
+
+    - scene:
+      scene.xy[] = vec2(0, 0)
+      scene.wh[] = resolution
+
+  var frame = 0
+  var time = fromTime
+  var img = imageman.initImage[imageman.ColorRGBAU](resolution.x.int, resolution.y.int)
+
+  var imagepaths: seq[string]
+  # avdevice_register_all()
+
+  # var format_context: ptr AVFormatContext
+  # doassert avformat_alloc_output_context2(format_context.addr, nil, nil, outfile) == 0
+
+  # let codec = avcodec_find_encoder(AV_CODEC_ID_H264)
+  # doassert codec != nil
+  # let stream = avformat_new_stream(format_context, codec)
+  # doassert stream != nil
+  # stream.id = cint format_context.nb_streams - 1
+
+  # let codec_context = avcodec_alloc_context3(codec)
+  # doassert codec_context != nil
+
+  # codec_context.codec_id = format_context.oformat.video_codec
+  # codec_context.bit_rate = 400000
+  # codec_context.width = width
+  # codec_context.height = height
+  # stream.time_base = av_d2q(1 / fps, 120)
+  # codec_context.time_base = stream.time_base
+  # codec_context.pix_fmt = AV_PIX_FMT_YUV420P
+  # codec_context.gop_size = 12
+  # codec_context.max_b_frames = 2
+
+  # if (format_context.oformat.flags and AVFMT_GLOBALHEADER) == AVFMT_GLOBALHEADER:
+  #   codec_context.flags = codec_context.flags or AV_CODEC_FLAG_GLOBAL_HEADER
+  
+  # doassert avcodec_open2(codec_context, codec, nil) == 0
+
+  # let ffmpeg_frame = av_frame_alloc()
+  # doassert ffmpeg_frame != nil
+  # ffmpeg_frame.format = cint codec_context.pix_fmt
+  # ffmpeg_frame.width = codec_context.width
+  # ffmpeg_frame.height = codec_context.height
+
+  # doassert av_frame_get_buffer(ffmpeg_frame, 32) == 0
+
+  # codec_context.extradata = cast[ptr uint8](alloc0(uint8.sizeof))
+  # doassert avcodec_parameters_from_context(stream.codecpar, codec_context) == 0
+  
+  # let sws_context = sws_getContext(
+  #   codec_context.width, codec_context.height, AV_PIX_FMT_RGBA,  # src
+  #   codec_context.width, codec_context.height, AV_PIX_FMT_YUV420P,  # dest
+  #   SWS_BILINEAR, nil, nil, nil
+  # )
+  # doassert sws_context != nil
+
+  # av_dump_format(format_context, 0, outfile, 1)
+  # doassert avio_open(format_context.pb.addr, outfile, AVIO_FLAG_WRITE) == 0
+  # doassert avformat_write_header(format_context, nil) == 0
+
+  if dirExists("/tmp/animaui"):
+    removeDir "/tmp/animaui"
+  createDir "/tmp/animaui"
+
+  while time < toTime:
+    defer:
+      inc frame
+      time += initDuration(seconds=1) div fps
+
+    if frame mod 8 == 0:  ## todo: make better
+      echo time
+
+    scene.setTime(time)
+    
+    renderarea.draw(prevParent.parentUiWindow.ctx)
+
+    renderarea.getPixels(img.data)
+    flipVert img
+
+    savePng(img, "/tmp/animaui/" & $frame & ".png", compression = 5)
+    imagepaths.add("file /tmp/animaui/" & $frame & ".png")
+
+    # doassert av_frame_make_writable(ffmpeg_frame) >= 0
+    # var linesize = codec_context.width * 4
+    # var data = cast[ptr uint8](img.data[0].addr)
+    # discard sws_scale(sws_context, data.addr, linesize.addr, 0, codec_context.height, ffmpeg_frame.data[0].addr, ffmpeg_frame.linesize[0].addr)
+    # ffmpeg_frame.pts = frame
+    
+    # doassert avcodec_send_frame(codec_context, ffmpeg_frame) >= 0
+    # var packet: AVPacket
+    # doassert avcodec_receive_packet(codec_context, packet.addr) >= 0
+    
+    # # av_packet_rescale_ts(packet.addr, codec_context.time_base, stream.time_base)
+    # packet.stream_index = stream.index
+    
+    # doassert av_interleaved_write_frame(format_context, packet.addr) >= 0
+    # av_packet_unref(packet.addr)
+
+  writeFile "/tmp/animaui/images.txt", imagepaths.join("\n")
+
+  discard execShellCmd &"ffmpeg -hide_banner -loglevel panic -r {fps} -f concat -safe 0 -i /tmp/animaui/images.txt -c:v libx264 -pix_fmt yuv420p {outfile}"
+
+  removeDir "/tmp/animaui"

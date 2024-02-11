@@ -5,6 +5,10 @@ type
   ToolKind* = enum
     arrow
     rect
+    frame
+    text
+    color
+    opacity
 
   ToolbarTool* = ref object of UiRect
     selected*: Property[bool]
@@ -12,6 +16,9 @@ type
   
   Toolbar* = ref object of UiRect
     currentTool*: Property[ToolKind]
+
+registerComponent Toolbar
+registerComponent ToolbarTool
 
 
 const arrowIcon = staticRead "../../icons/toolbox/arrow.svg"
@@ -38,7 +45,6 @@ proc newToolbarTool(icon: string): ToolbarTool =
 
 
 method init*(this: Toolbar) =
-  if this.initialized: return
   procCall this.super.init()
 
   this.color[] = "303030"

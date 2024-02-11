@@ -10,6 +10,9 @@ type
 
   WindowHeader* = ref object of UiRect
 
+registerComponent Button
+registerComponent WindowHeader
+
 
 macro c(g: static string): Col =
   if g.len == 2: 

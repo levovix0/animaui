@@ -48,7 +48,7 @@ proc getValueAtTime*[T](keyframes: seq[Keyframe[T]], time: Duration): T =
   
   let f =
     if currentKeyframe.interpolation.kind == InterpolationKind.default:
-      outSquareInterpolation
+      outSquareEasing
     else:
       currentKeyframe.interpolation.custom
   

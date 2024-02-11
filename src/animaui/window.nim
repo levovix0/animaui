@@ -2,15 +2,17 @@ import siwin, fusion/matching
 import sigui/[uibase, mouseArea]
 
 type
-  DmusicWindow* = ref object of Uiobj
+  WindowDecorations* = ref object of Uiobj
     edge: int  # 8 edges (1..8), from top to top-left 
     borderWidth: float32
     windowFrame {.cursor.}: UiRect
     clipRect {.cursor.}: ClipRect
     mouse: MouseArea
 
+registerComponent WindowDecorations
 
-proc updateChilds(this: DmusicWindow, initial = false) =
+
+proc updateChilds(this: WindowDecorations, initial = false) =
   if this.parentWindow.maximized:
     this.borderWidth = -1
     this.clipRect.visibility[] = hidden
@@ -19,11 +21,9 @@ proc updateChilds(this: DmusicWindow, initial = false) =
     this.borderWidth = 10
     this.clipRect.visibility[] = Visibility.visible
     this.clipRect.fill(this, 10)
-  if not initial:
-    redraw this
 
 
-method recieve*(this: DmusicWindow, signal: Signal) =
+method recieve*(this: WindowDecorations, signal: Signal) =
   case signal
   of of GetActiveCursor():
     let pos = this.parentWindow.mouse.pos.vec2.posToLocal(this)
@@ -87,14 +87,14 @@ proc createWindow*(rootObj: Uiobj): UiWindow =
   # config.csd.changed.connectTo result:
   #   this.siwinWindow.frameless = config.csd
   
-  let dmWin = DmusicWindow()
+  let dmWin = WindowDecorations()
 
   result.makeLayout:
     - RectShadow():
       this.fill(parent)
-      this.radius[] = 7.5
-      this.blurRadius[] = 10
-      this.color[] = color(0, 0, 0, 0.3)
+      radius = 7.5
+      blurRadius = 10
+      color = color(0, 0, 0, 0.3)
       # this.binding visibility:
       #   if config.window_maximized[]: Visibility.hidden
       #   else:

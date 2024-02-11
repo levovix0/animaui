@@ -1,18 +1,71 @@
-import algorithm, times, sequtils
-import sigui/[uibase, mouseArea, globalShortcut, animations], siwin, cligen
+import algorithm, times, sequtils, logging
+import sigui/[uibase, mouseArea, globalShortcut, animations, layouts], siwin, cligen, localize
 import utils, window, windowHeader
 import editor/[fonts, timeline, toolbar, keyframes, scene]
 
+requireLocalesToBeTranslated ("ru", "")
+
+type
+  ButtonKind* = enum
+    normal
+    suggested
+  
+  Button* = ref object of UiRect
+    text*: CustomProperty[string]
+    clicked*: Event[void]
+    kind*: Property[ButtonKind]
+
+registerComponent Button
+
+
+method init(this: Button) =
+  procCall this.UiRect.init()
+  
+  this.makeLayout:
+    this.radius[] = 5
+
+    this.binding color:
+      case root.kind[]
+      of normal:
+        if mouse.pressed[]: Color "404040"
+        elif mouse.hovered[]: Color "505050"
+        else: Color "202020"
+      of suggested:
+        if mouse.pressed[]: Color "215cda"
+        elif mouse.hovered[]: Color "628fff"
+        else: Color "557DFF"
+    
+    - UiText():
+      parent.binding w: this.w[] + 20
+      parent.binding h: this.h[] + 10
+      this.font[] = fonts.notoSans.withSize(14)
+      this.centerX = parent.center
+      this.centerY = parent.center
+      this.color[] = "fff"
+
+      root.text = CustomProperty[string](
+        get: proc: string = this.text[],
+        set: proc(s: string) = this.text[] = s
+      )
+    
+    - MouseArea() as mouse:
+      this.fill parent
+      this.mouseDownAndUpInside.connectTo this: root.clicked.emit()
 
 proc animaui =
+  logging.addHandler newConsoleLogger(fmtStr = "[$date at $time]:$levelname ")
+  logging.addHandler newFileLogger("animaui.log", fmWrite, fmtStr = "[$date at $time]:$levelname ")
+
   # let win = newOpenglWindow().newUiWindow
   var root = UiObj()
   let win = createWindow(root)
 
-  # win.clearColor = "202020"
+  globalLocale[0] = systemLocale()
 
-  let fonts = Fonts()
+  # win.clearColor = "202020"
   fonts.firaCode = static(staticRead "../../fonts/FiraCode.ttf").parseTtf
+  fonts.comfortaa = static(staticRead "../../fonts/Comfortaa.ttf").parseTtf
+  fonts.notoSans = static(staticRead "../../fonts/NotoSans-Regular.ttf").parseTtf
 
   var selectedObject: Property[SceneObject]
 
@@ -76,32 +129,33 @@ proc animaui =
       
       # --- borders ---
       - UiRect():
-        this.drawLayer = after scene
+        this.drawLayer = after scenearea
         this.top = parent.top
         this.bottom = scene.top
         this.fillHorizontal parent
         this.color[] = "10101080"
       
       - UiRect():
-        this.drawLayer = after scene
+        this.drawLayer = after scenearea
         this.bottom = parent.bottom
         this.top = scene.bottom
         this.fillHorizontal parent
         this.color[] = "10101080"
 
       - UiRect():
-        this.drawLayer = after scene
+        this.drawLayer = after scenearea
         this.left = parent.left
         this.right = scene.left
         this.fillVertical parent
         this.color[] = "10101080"
       
       - UiRect():
-        this.drawLayer = after scene
+        this.drawLayer = after scenearea
         this.right = parent.right
         this.left = scene.right
         this.fillVertical parent
         this.color[] = "10101080"
+
 
     - MouseArea():  # arrow tool
       this.fill scenearea
@@ -293,6 +347,10 @@ proc animaui =
       var oldPos: Property[Vec2]
       var prevPos: Vec2
 
+      this.binding visibility:
+        if toolbar.currentTool[] == ToolKind.rect: Visibility.visible
+        else: Visibility.collapsed
+
       var operationStarted = false
 
       proc finishOperation =
@@ -315,8 +373,6 @@ proc animaui =
             this.y[] = r.y
             this.w[] = r.w
             this.h[] = r.h
-            
-            redraw this
 
       this.pressed.changed.connectTo this, pressed:
         if pressed:
@@ -335,7 +391,6 @@ proc animaui =
         if ({Key.lalt, Key.ralt} * this.parentWindow.keyboard.pressed).len > 0:
           oldPos[] = oldPos[] + (vec2(this.mouseX[], this.mouseY[]) - prevPos)
         prevPos = vec2(this.mouseX[], this.mouseY[])
-        redraw this
 
       this.mouseX.changed.connectTo this: updatePos()
       this.mouseY.changed.connectTo this: updatePos()
@@ -350,7 +405,18 @@ proc animaui =
           if parent.pressed[] and toolbar.currentTool[] == ToolKind.rect: Visibility.visible
           else: Visibility.hidden
 
-        this.color[] = "88f8"
+        color = "88f8"
+
+
+    - MouseArea():  # color tool
+      this.fill scenearea
+
+      this.ignoreHandling[] = true
+
+      this.binding visibility:
+        if toolbar.currentTool[] == ToolKind.color: Visibility.visible
+        else: Visibility.collapsed
+
 
 
     - globalShortcut({Key.del}):
@@ -359,28 +425,39 @@ proc animaui =
           selectedObject[].kind[] = none
           selectedObject[].parent[].childs.delete selectedObject[].parent[].childs.find(selectedObject[])
           selectedObject[] = nil
-          redraw this
 
 
-    - newTimelinePanel(fonts) as timelinePanel:
+    - newTimelinePanel() as timelinePanel:
       this.fillHorizontal parent
-      this.bottom = parent.bottom
-      this.h[] = 150
+      bottom = parent.bottom
+      h = 150
 
       this.parentUiWindow.onTick.connectTo this, e:
         if timelinePanel.playing[]:
           timelinePanel.currentTime[] = timelinePanel.currentTime[] + e.deltaTime
-          redraw this
     
     - Toolbar() as toolbar:
-      this.top = header.bottom
-      this.bottom = timelinePanel.top
-      this.left = parent.left
-      this.w[] = 40
+      top = header.bottom
+      bottom = timelinePanel.top
+      left = parent.left
+      w = 40
 
     - newWindowHeader() as header:
       this.fillHorizontal parent
-      this.h[] = 40
+      h = 40
+
+      - Layout():
+        left = parent.left + 10
+        centerY = parent.center
+        spacing = 10
+        orientation = horizontal
+
+        - Button():
+          kind = suggested
+          text = tr"Render"
+
+          this.clicked.connectTo this:
+            render(scene, vec2(1280, 720), "out.mp4", 30, timelinePanel.startTime[], timelinePanel.endTime[])
 
 
   run win.siwinWindow
@@ -388,3 +465,4 @@ proc animaui =
 
 when isMainModule:
   dispatch animaui
+  updateTranslations()
