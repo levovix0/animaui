@@ -5,7 +5,7 @@ import utils
 export utils
 when not defined(preview):
   import strformat
-  import screenRecording
+  import editor/screenRecording
   # import ffmpeg
 else:
   import math, strformat
@@ -182,7 +182,7 @@ proc disappear*[T: UiObj](
       a.duration{} = changeDuration
       a.a{} = prev
       a.b{} = equa(prev, slv)
-      a.interpolation[] = outSquareInterpolation
+      a.interpolation[] = outSquareEasing
       a.ended.connectTo obj:
         prop[] = prev
       this.addChild a

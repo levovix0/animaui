@@ -6,6 +6,8 @@ import ./[fonts, keyframes]
 type
   TimelinePanel* = ref object of UiRect
     actions*: Property[seq[Keyframe[void]]]
+    colorActions*: Property[seq[Keyframe[void]]]
+    opacityActions*: Property[seq[Keyframe[void]]]
     currentTime*: Property[Duration]
     playing*: Property[bool]
 
@@ -13,6 +15,7 @@ type
     endTime*: Property[Duration] 
     
     actionsView: CustomProperty[Uiobj]
+    opacityActionsView: CustomProperty[Uiobj]
 
 registerComponent TimelinePanel
 
@@ -34,18 +37,33 @@ proc newTimelinePanel*(): TimelinePanel =
 
     this.actionsView --- Uiobj():
       this.fillHorizontal parent
-      h = 1
-      bottom = parent.bottom - 10
+      h = 2
+      bottom = parent.bottom - 20
 
       for x in root.actions:
         - UiRect():
           w = 1
-          h = 1
+          h = 2
           this.binding x: (x.time.inMicroseconds() / 1_000_000) * (pixelsUntilText[] / timeScale[]) + startFromPixel[]
           this.binding w: (x.changeDuration.toDuration.inMicroseconds() / 1_000_000) * (pixelsUntilText[] / timeScale[])
           color = "8f8"
 
+    this.opacityActionsView --- Uiobj():
+      this.fillHorizontal parent
+      h = 2
+      # bottom = parent.bottom - 12
+      bottom = parent.bottom - 16
+
+      for x in root.opacityActions:
+        - UiRect():
+          w = 1
+          h = 2
+          this.binding x: (x.time.inMicroseconds() / 1_000_000) * (pixelsUntilText[] / timeScale[]) + startFromPixel[]
+          this.binding w: (x.changeDuration.toDuration.inMicroseconds() / 1_000_000) * (pixelsUntilText[] / timeScale[])
+          color = "888"
+
     this.actions.changed.connectTo this: this.actionsView[] = UiObj()
+    this.opacityActions.changed.connectTo this: this.opacityActionsView[] = UiObj()
 
     - UiRect():
       this.fillVertical parent
@@ -88,6 +106,10 @@ proc newTimelinePanel*(): TimelinePanel =
           let nearestDistance = (
             root.actions[].mapit(it.time.inMilliseconds) &
             root.actions[].mapit(it.time.inMilliseconds + it.changeDuration.toDuration.inMilliseconds) &
+            root.colorActions[].mapit(it.time.inMilliseconds) &
+            root.colorActions[].mapit(it.time.inMilliseconds + it.changeDuration.toDuration.inMilliseconds) &
+            root.opacityActions[].mapit(it.time.inMilliseconds) &
+            root.opacityActions[].mapit(it.time.inMilliseconds + it.changeDuration.toDuration.inMilliseconds) &
             @[
               int64 (time.inMilliseconds / 1000 / timeScale[]).int.float * 1000 * timeScale[],
               int64 ((time.inMilliseconds / 1000 / timeScale[]).int.float * 1000 + 1000) * timeScale[],

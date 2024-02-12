@@ -16,12 +16,14 @@ type
     selected*: Property[bool]
 
     color*: Property[chroma.Color]
+    opacity*: Property[float32]
 
     xKeyframes*: seq[Keyframe[float32]]
     yKeyframes*: seq[Keyframe[float32]]
     wKeyframes*: seq[Keyframe[float32]]
     hKeyframes*: seq[Keyframe[float32]]
     colorKeyframes*: seq[Keyframe[chroma.Color]]
+    opacityKeyframes*: seq[Keyframe[float32]]
 
 registerComponent Scene
 registerComponent SceneObject
@@ -38,6 +40,8 @@ proc setTime*(this: SceneObject, time: Duration) =
     this.h[] = this.hKeyframes.getValueAtTime(time)
   if this.colorKeyframes.len != 0:
     this.color[] = this.colorKeyframes.getValueAtTime(time)
+  if this.opacityKeyframes.len != 0:
+    this.opacity[] = this.opacityKeyframes.getValueAtTime(time)
 
 
 proc setTime*(this: Scene, time: Duration) =
@@ -88,7 +92,7 @@ method init*(this: SceneObject) =
     
     case kind
     of rect:
-      this.internalObject.UiRect.color[] = this.color[]
+      this.internalObject.UiRect.color[] = color(this.color[].r, this.color[].g, this.color[].b, this.opacity[])
     else: discard
   
   this.x.changed.connectTo this, x:
@@ -120,7 +124,14 @@ method init*(this: SceneObject) =
     if this.internalObject != nil:
       case this.kind[]
       of rect:
-        this.internalObject.UiRect.color[] = color
+        this.internalObject.UiRect.color[] = color(this.color[].r, this.color[].g, this.color[].b, this.opacity[])
+      else: discard
+
+  this.opacity.changed.connectTo this, opacity:
+    if this.internalObject != nil:
+      case this.kind[]
+      of rect:
+        this.internalObject.UiRect.color[] = color(this.color[].r, this.color[].g, this.color[].b, this.opacity[])
       else: discard
 
 
@@ -156,8 +167,9 @@ proc render*(scene: Scene, resolution: Vec2, outfile: string, fps: int, fromTime
       color = "202020"
 
     - scene:
-      scene.xy[] = vec2(0, 0)
-      scene.wh[] = resolution
+      this.xy[] = vec2(0, 0)
+      this.w[] = resolution.x
+      this.h[] = resolution.y
 
   var frame = 0
   var time = fromTime

@@ -43,6 +43,9 @@ proc getValueAtTime*[T](keyframes: seq[Keyframe[T]], time: Duration): T =
       currentKeyframe = x
     elif x.time >= prevKeyframe.time and time >= x.time:
       prevKeyframe = x
+  
+  if prevKeyframe.time == -initDuration(days=1):
+    prevKeyframe = currentKeyframe
 
   let dur = currentKeyframe.changeDuration.toDuration
   

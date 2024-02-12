@@ -80,10 +80,7 @@ proc animaui =
       return xy / ptSize
 
 
-    proc keyframeForTime[T](keyframes: var seq[Keyframe[T]], value: T, time: Duration): var Keyframe[T] =
-      if keyframes.len == 0:
-        keyframes.add Keyframe[T](value: value, time: -(0.2's))
-
+    proc keyframeForTime[T](keyframes: var seq[Keyframe[T]], time: Duration): var Keyframe[T] =
       for kf in keyframes.mitems:
         if kf.time.inMilliseconds == time.inMilliseconds:
           return kf
@@ -179,8 +176,12 @@ proc animaui =
         disconnect eh
         if selectedObject[] != nil:
           timelinePanel.actions[] = selectedObject[].xKeyframes.mapit(Keyframe[void](time: it.time, changeDuration: it.changeDuration))
+          timelinePanel.colorActions[] = selectedObject[].colorKeyframes.mapit(Keyframe[void](time: it.time, changeDuration: it.changeDuration))
+          timelinePanel.opacityActions[] = selectedObject[].opacityKeyframes.mapit(Keyframe[void](time: it.time, changeDuration: it.changeDuration))
         else:
           timelinePanel.actions[] = @[]
+          timelinePanel.colorActions[] = @[]
+          timelinePanel.opacityActions[] = @[]
 
       this.pressed.changed.connectTo this, pressed:
         disconnect eh
@@ -306,8 +307,8 @@ proc animaui =
               horizontalSnapping[] = false
               verticalSnapping[] = false
           
-          obj.xKeyframes.keyframeForTime(obj.x[], time).value = pos.x
-          obj.yKeyframes.keyframeForTime(obj.y[], time).value = pos.y
+          obj.xKeyframes.keyframeForTime(time).value = pos.x
+          obj.yKeyframes.keyframeForTime(time).value = pos.y
           obj.xy[] = pos
           timelinePanel.actions[] = obj.xKeyframes.mapit(Keyframe[void](time: it.time, changeDuration: it.changeDuration))
         
@@ -365,14 +366,17 @@ proc animaui =
           r.y = r.y + r.h
           r.h = -r.h
         scene.makeLayout:
-          - SceneObject():
+          - SceneObject() as o:
             this.kind[] = rect
             this.color[] = "fff"
+            this.opacity[] = 1
 
             this.x[] = r.x
             this.y[] = r.y
             this.w[] = r.w
             this.h[] = r.h
+          
+          selectedObject[] = o
 
       this.pressed.changed.connectTo this, pressed:
         if pressed:
@@ -418,6 +422,34 @@ proc animaui =
         else: Visibility.collapsed
 
 
+    - MouseArea():  # opacity tool
+      this.fill scenearea
+
+      ignoreHandling = true
+
+      var prevX: float32
+
+      this.binding visibility:
+        if toolbar.currentTool[] == ToolKind.opacity: Visibility.visible
+        else: Visibility.collapsed
+
+      proc doAct =
+        if selectedObject[] == nil: return
+        const maxOpacityPx = 100
+        let d = this.mouseX[] - prevX
+        selectedObject[].opacity[] = (selectedObject[].opacity[] + d / maxOpacityPx).clamp(0.0, 1.0)
+        selectedObject[].opacityKeyframes.keyframeForTime(timelinePanel.currentTime[]).value = selectedObject[].opacity[]
+        timelinePanel.opacityActions[] = selectedObject[].opacityKeyframes.mapit(Keyframe[void](time: it.time, changeDuration: it.changeDuration))
+
+      this.pressed.changed.connectTo this:
+        prevX = this.mouseX[]
+        doAct()
+      
+      this.mouseX.changed.connectTo this:
+        if this.pressed[]:
+          doAct()
+        prevX = this.mouseX[]
+
 
     - globalShortcut({Key.del}):
       this.activated.connectTo this:
@@ -457,7 +489,8 @@ proc animaui =
           text = tr"Render"
 
           this.clicked.connectTo this:
-            render(scene, vec2(1280, 720), "out.mp4", 30, timelinePanel.startTime[], timelinePanel.endTime[])
+            # render(scene, vec2(1280, 720), "out.mp4", 30, timelinePanel.startTime[], timelinePanel.endTime[])
+            render(scene, vec2(1920, 1080), "out.mp4", 30, timelinePanel.startTime[], timelinePanel.endTime[])
 
 
   run win.siwinWindow

@@ -21,8 +21,9 @@ registerComponent Toolbar
 registerComponent ToolbarTool
 
 
-const arrowIcon = staticRead "../../icons/toolbox/arrow.svg"
-const rectIcon = staticRead "../../icons/toolbox/rect.svg"
+const arrowIcon = staticRead "../../icons/toolbar/arrow.svg"
+const rectIcon = staticRead "../../icons/toolbar/rect.svg"
+const opacityIcon = staticRead "../../icons/toolbar/opacity.svg"
 
 
 proc newToolbarTool(icon: string): ToolbarTool =
@@ -69,6 +70,9 @@ method init*(this: Toolbar) =
         # of Key.t:
         #   if p: root.currentTool[] = ToolKind.text
         #   else: root.currentTool[] = ToolKind.arrow
+        of Key.x:
+          if p: root.currentTool[] = ToolKind.opacity
+          else: root.currentTool[] = ToolKind.arrow
         else: discard
 
       - newToolbarTool(arrowIcon):
@@ -82,3 +86,9 @@ method init*(this: Toolbar) =
         this.binding h: this.w[]
         this.binding selected: root.currentTool[] == rect
         this.clicked.connectTo this: root.currentTool[] = rect
+
+      - newToolbarTool(opacityIcon):
+        this.binding w: parent.w[]
+        this.binding h: this.w[]
+        this.binding selected: root.currentTool[] == opacity
+        this.clicked.connectTo this: root.currentTool[] = opacity
