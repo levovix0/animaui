@@ -265,6 +265,18 @@ proc parseNimCode*(s: Text, state: NimParseState, len = 100): tuple[segments: se
         for (k, p, n) in sets:
           set k, p, n
         skip l
+
+    template pragma =
+      var l = 3
+
+      while true:
+        if not exist(l): break
+        if peek(l-1) == ".".rune and peek(l) == "}".rune: break
+        inc l
+      
+      add sText, 2
+      add sKeyword, l-3
+      add sText, 2
   
     template multilineStr =
       var l = 1
@@ -332,6 +344,9 @@ proc parseNimCode*(s: Text, state: NimParseState, len = 100): tuple[segments: se
       multilineStr
     
     elif r == "\"".rune:           str
+    elif r == "*".rune and (peek(1) == ":".rune or peek(1) == ",".rune or peek(-1).isAlpha):
+      add sControlFlow
+    elif r == "{".rune and peek(1) == ".".rune: pragma
     else:
       add sText
     

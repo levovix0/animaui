@@ -40,3 +40,13 @@ converter toColor*(s: string): chroma.Color =
     )
   else:
     raise ValueError.newException("invalid color: " & s)
+
+
+proc fit*(image: Image, size: Vec2): Image =
+  let size = size.ivec2
+  let wmul = size.x / image.width
+  let hmul = size.y / image.height
+  if wmul < hmul:
+    image.resize(int image.width.float * wmul, int image.height.float * wmul)
+  else:
+    image.resize(int image.width.float * hmul, int image.height.float * hmul)

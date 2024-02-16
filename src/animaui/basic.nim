@@ -4,8 +4,10 @@ export uibase, animations
 import utils
 export utils
 when not defined(preview):
-  import strformat
+  import strformat, sequtils
   import editor/screenRecording
+  import std/importutils
+  import suru
   # import ffmpeg
 else:
   import math, strformat
@@ -23,6 +25,8 @@ when not defined(preview):
 
 var sceneWidth*: float = width  # in pixels
 var sceneHeight*: float = height  # in pixels
+
+var endTime*: Duration
 
 
 proc w*(lit: float): float =
@@ -118,7 +122,7 @@ macro change*(what, toVal: untyped): untyped =
       a.duration{} = `changeDuration`
       a.a{} = `what`[]
       a.b{} = `toVal`
-      a.interpolation[] = outSquareInterpolation
+      a.easing[] = outSquareEasing
       this.addChild a
       start a
   else:
@@ -131,7 +135,7 @@ macro change*(what, toVal: untyped): untyped =
       a.duration{} = `changeDuration`
       a.a{} = `what`
       a.b{} = `toVal`
-      a.interpolation[] = outSquareInterpolation
+      a.easing[] = outSquareEasing
       this.addChild a
       start a
 
@@ -182,7 +186,7 @@ proc disappear*[T: UiObj](
       a.duration{} = changeDuration
       a.a{} = prev
       a.b{} = equa(prev, slv)
-      a.interpolation[] = outSquareEasing
+      a.easing[] = outSquareEasing
       a.ended.connectTo obj:
         prop[] = prev
       this.addChild a
@@ -274,30 +278,41 @@ proc render*() =
       removeDir "/tmp/animaui"
     createDir "/tmp/animaui"
 
+    privateAccess Window
+
+    var progressbar = initSuruBar(1)
+    progressbar[0].total = int endTime.inMicroseconds / 1_000_000 * fps
+    setup progressbar
+    
     while not finished:
       defer:
         inc frame
+        inc progressbar
+        update progressbar
+        if endTime <= time: finished = true
         time += initDuration(seconds=1) div fps
-
-      if frame mod 8 == 0:  ## todo: make better
-        echo time
 
       block:
         var i = 0
         while i < timeactions.len:
           if timeactions[i][0] <= time:
             timeactions[i][1]()
+            redraw win
             timeactions.del i
           else:
             inc i
       
-      win.draw(win.ctx)
+      if win.siwinWindow.redrawRequested or imagepaths.len == 0:
+        win.draw(win.ctx)
 
-      this.getPixels(img.data)
-      flipVert img
+        this.getPixels(img.data)
+        flipVert img
 
-      savePng(img, "/tmp/animaui/" & $frame & ".png", compression = 5)
-      imagepaths.add("file /tmp/animaui/" & $frame & ".png")
+        savePng(img, "/tmp/animaui/" & $frame & ".png", compression = 5)
+      else:
+        copyFile(imagepaths[^1], "/tmp/animaui/" & $frame & ".png")
+      
+      imagepaths.add("/tmp/animaui/" & $frame & ".png")
 
       win.onTick.emit(TickEvent(window: win.siwinWindow, deltaTime: initDuration(seconds=1) div fps))
 
@@ -317,7 +332,9 @@ proc render*() =
       # doassert av_interleaved_write_frame(format_context, packet.addr) >= 0
       # av_packet_unref(packet.addr)
 
-    writeFile "/tmp/animaui/images.txt", imagepaths.join("\n")
+    finish progressbar
+
+    writeFile "/tmp/animaui/images.txt", imagepaths.mapit("file " & it).join("\n")
 
     discard execShellCmd &"ffmpeg -hide_banner -loglevel panic -r {fps} -f concat -safe 0 -i /tmp/animaui/images.txt -c:v libx264 -pix_fmt yuv420p {outfile}"
 
@@ -342,6 +359,7 @@ proc render*() =
       win.onTick.connectTo win, val:
         if not paused[]:
           inc frame
+          if endTime <= time: finish()
           time += val.deltaTime
 
           block:
@@ -367,14 +385,14 @@ proc render*() =
         this.color[] = "fff0"
 
         - Animation[chroma.Color]() as playpause_color_anim:
-          this.interpolation[] = proc(x: float): float = 1 - (x * 2 - 1).pow(2)
+          this.easing[] = proc(x: float): float = 1 - (x * 2 - 1).pow(2)
           this.duration[] = changeDuration
           this.a[] = "fff0"
           this.b[] = "fffa"
           this.action = proc(x: chroma.Color) = parent.color[] = x
 
         - Animation[float]() as playpause_size_anim:
-          this.interpolation[] = outSquareInterpolation
+          this.easing[] = outSquareEasing
           this.duration[] = changeDuration
           this.a[] = 0
           this.b[] = 4.pt

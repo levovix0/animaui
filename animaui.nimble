@@ -5,7 +5,7 @@ author        = "levovix0"
 description   = "Animation program for making cool lessons"
 license       = "MIT"
 srcDir        = "src"
-bin           = @["animaui/editor"]
+# bin           = @["animaui/editor"]
 
 
 # Dependencies
@@ -16,3 +16,4 @@ requires "imageman"  # для записи изображений
 requires "cligen"  # для CLI
 # requires "ffmpeg"  # для работы с видео
 requires "localize"  # для локализации текста
+requires "suru"  # для показывание прогресса рендеринга

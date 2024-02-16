@@ -47,6 +47,7 @@ type
     font*: Property[Font]
     textObj*: CustomProperty[UiObj]
     syntax*: Property[CodeLanguage]
+    color*: Property[Color] = color(1, 1, 1).property
   
 
   TextConstructMode* = enum
@@ -131,13 +132,13 @@ method init*(this: Code) =
           maxh = max(maxh, x.y + x.h)
 
           - UiText():
-            this.xy[] = x.xy
-            this.text[] = $typeset.runes[i]
-            this.color[] = highlighting[i].color
-            this.font[] = root.font[]
+            xy = x.xy
+            text = $typeset.runes[i]
+            this.binding color: highlighting[i].color * root.color[].a
+            font = root.font[]
 
-        this.w[] = maxw
-        this.h[] = maxh
+        w = maxw
+        h = maxh
 
         root.w[] = maxw
         root.h[] = maxh
