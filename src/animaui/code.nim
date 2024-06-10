@@ -75,8 +75,11 @@ var colorTheme* = readColorTheme("themes" / (theme & ".json"))
 
 proc color*(sk: CodeKind): ColorRGB =
   case sk
-  of sKeyword, sOperatorWord, sBuiltinType:
+  of sKeyword, sOperatorWord:
     colorTheme.sKeyword
+  
+  of sBuiltinType:
+    colorTheme.sBuiltinType
 
   of sControlFlow:
     colorTheme.sControlFlow

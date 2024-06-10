@@ -1,4 +1,5 @@
-import times, strutils, os, macros, imageman
+import std/[times, strutils, os, macros, threadpool]
+import pkg/[imageman]
 import sigui/[uibase, animations], siwin, fusion/matching
 export uibase, animations
 import utils
@@ -283,7 +284,7 @@ proc render*() =
     var progressbar = initSuruBar(1)
     progressbar[0].total = int endTime.inMicroseconds / 1_000_000 * fps
     setup progressbar
-    
+
     while not finished:
       defer:
         inc frame
@@ -308,7 +309,8 @@ proc render*() =
         this.getPixels(img.data)
         flipVert img
 
-        savePng(img, "/tmp/animaui/" & $frame & ".png", compression = 5)
+        spawn savePng(img, "/tmp/animaui/" & $frame & ".png", compression = 5)
+
       else:
         copyFile(imagepaths[^1], "/tmp/animaui/" & $frame & ".png")
       
@@ -335,6 +337,8 @@ proc render*() =
     finish progressbar
 
     writeFile "/tmp/animaui/images.txt", imagepaths.mapit("file " & it).join("\n")
+
+    threadpool.sync()  # done saving .png images
 
     discard execShellCmd &"ffmpeg -hide_banner -loglevel panic -r {fps} -f concat -safe 0 -i /tmp/animaui/images.txt -c:v libx264 -pix_fmt yuv420p {outfile}"
 

@@ -5,7 +5,7 @@ author        = "levovix0"
 description   = "Animation program for making cool lessons"
 license       = "MIT"
 srcDir        = "src"
-# bin           = @["animaui/editor"]
+bin           = @["animaui/editor"]
 
 
 # Dependencies

@@ -5,7 +5,7 @@ import sigui/[uibase, mouseArea]
 type
   Button = ref object of UiRect
     action: proc()
-    icon: UiIcon
+    icon: UiImage
     accent: Property[bool]
 
   WindowHeader* = ref object of UiRect
@@ -26,7 +26,7 @@ macro c(g: static string): Col =
 proc newButton*(icon: string): Button =
   result = Button()
   result.makeLayout:
-    this.wh[] = vec2(50, 40)
+    wh = vec2(50, 40)
 
     - newMouseArea() as mouse:
       this.fill parent
@@ -34,12 +34,13 @@ proc newButton*(icon: string): Button =
       this.mouseDownAndUpInside.connectTo root:
         root.action()
 
-    - UiIcon() as ico:
-      this.image = icon.decodeImage
+    - UiImage() as ico:
+      colorOverlay = true
+      image = icon.decodeImage
       this.centerIn parent
       root.icon = ico
 
-      this.binding color: c"ff"
+      color = c"ff"
     
     this.binding color:
       if mouse.pressed[]:

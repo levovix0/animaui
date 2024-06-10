@@ -2,6 +2,9 @@
   "src/animaui/editor.nim": {
     "Render": {
       "": "Отрисовать"
+    },
+    "Add file": {
+      "": "Добавить файл"
     }
   }
 }

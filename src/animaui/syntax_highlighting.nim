@@ -93,7 +93,7 @@ proc parseNimCode*(s: Text, state: NimParseState, len = 100): tuple[segments: se
             sOperatorWord
           
           of "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float32", "float64", 
-            "int", "float", "string", "bool", "byte", "uint", "seq", "set", "char", "void", "auto", "any", "pointer":
+            "int", "float", "string", "bool", "byte", "uint", "seq", "set", "char", "void", "auto", "any", "pointer", "array":
             sBuiltinType
         
           elif exist(l) and (peek(l) == "(".rune or peek(l) == "\"".rune):
@@ -161,6 +161,7 @@ proc parseNimCode*(s: Text, state: NimParseState, len = 100): tuple[segments: se
       var l = 1
       var wasDot: bool
       var wasQuote: bool
+      var wasExponent: bool
       var digits = "0123456789_".runes
 
       if (peek(0) == rune"0") and ((peek(l) == rune"x") or (peek(l) == rune"X")) and exist(l + 1) and (peek(l + 1) in "0123456789abcdefABCDEF_".runes):
@@ -178,7 +179,10 @@ proc parseNimCode*(s: Text, state: NimParseState, len = 100): tuple[segments: se
       while true:
         if not exist(l): break
         let r = peek(l)
-        if wasQuote:
+        if not wasQuote and not wasExponent and peek(l) == rune"e":
+          wasExponent = true
+          if peek(l + 1) == rune"+" or peek(l + 1) == rune"-": inc l
+        elif wasQuote:
           if (not r.isAlpha) and (r notin "0123456789_".runes):
             break
         else:
@@ -242,6 +246,7 @@ proc parseNimCode*(s: Text, state: NimParseState, len = 100): tuple[segments: se
           onError
 
     template str =
+      let ignoreEscape = state.pos > 0 and peek(-1).isAlpha
       var l = 1
       var isError: bool
       var sets: seq[(CodeKind, int, int)]
@@ -249,10 +254,11 @@ proc parseNimCode*(s: Text, state: NimParseState, len = 100): tuple[segments: se
       while true:
         if not exist(l): isError = true; break
         let r = peek(l)
-        escape(r, l) do:
-          sets.add (sError, l - 1, 2)
-        do:
-          sets.add (sStringLitEscape, l - 1, n)
+        if not ignoreEscape:
+          escape(r, l) do:
+            sets.add (sError, l - 1, 2)
+          do:
+            sets.add (sStringLitEscape, l - 1, n)
         inc l
         if r == "\"".rune: break
         if r == "\n".rune: isError = true; break
@@ -287,10 +293,6 @@ proc parseNimCode*(s: Text, state: NimParseState, len = 100): tuple[segments: se
       while true:
         if not exist(l): isError = true; break
         let r = peek(l)
-        escape(r, l) do:
-          sets.add (sError, l - 1, 2)
-        do:
-          sets.add (sStringLitEscape, l - 1, n)
         inc l
         if r == "\"".rune:
           inc quoteCount

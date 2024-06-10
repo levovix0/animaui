@@ -1,4 +1,4 @@
-import algorithm, times, sequtils, logging
+import algorithm, times, sequtils, logging, osproc
 import sigui/[uibase, mouseArea, globalShortcut, animations, layouts], siwin, cligen, localize
 import utils, window, windowHeader
 import editor/[fonts, timeline, toolbar, keyframes, scene]
@@ -491,6 +491,12 @@ proc animaui =
           this.clicked.connectTo this:
             # render(scene, vec2(1280, 720), "out.mp4", 30, timelinePanel.startTime[], timelinePanel.endTime[])
             render(scene, vec2(1920, 1080), "out.mp4", 30, timelinePanel.startTime[], timelinePanel.endTime[])
+
+        - Button():
+          text = tr"Add file"
+
+          this.clicked.connectTo this:
+            echo execCmdEx("kdialog --getopenfilename").output.strip
 
 
   run win.siwinWindow

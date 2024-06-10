@@ -2,6 +2,8 @@ import animaui
 
 let firaCode = useFont "FiraCode"
 
+endTime = 5's
+
 byTime 0's:
   addToScene:
     - UiRect():
@@ -41,9 +43,6 @@ byTime 0's:
         x.UiText.disappear(slideUp = 0.1.h)
 
       rect.disappear()
-
-    afterTime 1's:
-      finish()
 
 
 render()

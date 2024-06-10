@@ -1,5 +1,5 @@
 import times, os, strutils, strformat
-import sigui/[uibase, animations], imageman
+import sigui/[uibase, animations], imageman, suru
 import ./[keyframes, screenRecording]
 
 type
@@ -231,9 +231,15 @@ proc render*(scene: Scene, resolution: Vec2, outfile: string, fps: int, fromTime
     removeDir "/tmp/animaui"
   createDir "/tmp/animaui"
 
+  var progressbar = initSuruBar(1)
+  progressbar[0].total = int (toTime - fromTime).inMicroseconds / 1_000_000 * fps.float
+  setup progressbar
+
   while time < toTime:
     defer:
       inc frame
+      inc progressbar
+      update progressbar
       time += initDuration(seconds=1) div fps
 
     if frame mod 8 == 0:  ## todo: make better
@@ -264,6 +270,8 @@ proc render*(scene: Scene, resolution: Vec2, outfile: string, fps: int, fromTime
     
     # doassert av_interleaved_write_frame(format_context, packet.addr) >= 0
     # av_packet_unref(packet.addr)
+  
+  finish progressbar
 
   writeFile "/tmp/animaui/images.txt", imagepaths.join("\n")
 
