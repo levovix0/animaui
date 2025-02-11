@@ -1,142 +1,81 @@
-import siwin, fusion/matching
-import sigui/[uibase, mouseArea]
+import siwin
+import sigui/[uibase]
+import pkg/[vmath]
 
 type
-  WindowDecorations* = ref object of Uiobj
-    edge: int  # 8 edges (1..8), from top to top-left 
-    borderWidth: float32
-    windowFrame {.cursor.}: UiRect
-    clipRect {.cursor.}: ClipRect
-    mouse: MouseArea
+  DecoratedWindow* = ref object of UiWindow
+    borderWidth*: Property[float32] = 10'f32.property
+    borderRadius*: Property[float32] = 7.5'f32.property
+    minSize*: Property[IVec2] = ivec2(540, 320).property
+    backgroundColor*: Property[Color] = "202020".litToColor.static.property
+    titleHeight*: Property[float32]
 
-registerComponent WindowDecorations
+    currentBorderWidth: Property[float32]
 
-
-proc updateChilds(this: WindowDecorations, initial = false) =
-  if this.parentWindow.maximized:
-    this.borderWidth = -1
-    this.clipRect.visibility[] = hidden
-    this.clipRect.fill(this, 0)
-  else:
-    this.borderWidth = 10
-    this.clipRect.visibility[] = Visibility.visible
-    this.clipRect.fill(this, 10)
+registerComponent DecoratedWindow
 
 
-method recieve*(this: WindowDecorations, signal: Signal) =
-  case signal
-  of of GetActiveCursor():
-    let pos = this.parentWindow.mouse.pos.vec2.posToLocal(this)
-    let box = rect(this.xy[], this.wh[])
+method recieve*(this: DecoratedWindow, signal: Signal) =
+  procCall this.super.recieve(signal)
 
-    let left = pos.x in 0'f32..(box.x + this.borderWidth)
-    let top = pos.y in 0'f32..(box.y + this.borderWidth)
-    let right = pos.x in (box.w - this.borderWidth)..(box.w)
-    let bottom = pos.y in (box.h - this.borderWidth)..(box.h)
-
-    if left and top:
-      signal.GetActiveCursor.cursor = (ref Cursor)(kind: builtin, builtin: sizeTopLeft)
-      this.edge = 8
-    elif right and top:
-      signal.GetActiveCursor.cursor = (ref Cursor)(kind: builtin, builtin: sizeTopRight)
-      this.edge = 2
-    elif right and bottom:
-      signal.GetActiveCursor.cursor = (ref Cursor)(kind: builtin, builtin: sizeBottomRight)
-      this.edge = 4
-    elif left and bottom:
-      signal.GetActiveCursor.cursor = (ref Cursor)(kind: builtin, builtin: sizeBottomLeft)
-      this.edge = 6
-    elif left:
-      signal.GetActiveCursor.cursor = (ref Cursor)(kind: builtin, builtin: sizeHorisontal)
-      this.edge = 7
-    elif top:
-      signal.GetActiveCursor.cursor = (ref Cursor)(kind: builtin, builtin: sizeVertical)
-      this.edge = 1
-    elif right:
-      signal.GetActiveCursor.cursor = (ref Cursor)(kind: builtin, builtin: sizeHorisontal)
-      this.edge = 3
-    elif bottom:
-      signal.GetActiveCursor.cursor = (ref Cursor)(kind: builtin, builtin: sizeVertical)
-      this.edge = 5
-    else:
-      this.edge = 0
-      procCall this.super.recieve(signal)
-
-  of of WindowEvent(event: @ea is of MaximizedChangedEvent()):
-    # let e = (ref MaximizedChangedEvent)ea
-    updateChilds(this)
-  
-  # of of WindowEvent(event: @ea is of ResizeEvent()):
-  #   let e = (ref ResizeEvent)ea
-  
-  else:
-    procCall this.super.recieve(signal)
+  if signal of WindowEvent and signal.WindowEvent.event of StateBoolChangedEvent:
+    let e = (ref StateBoolChangedEvent)signal.WindowEvent.event
+    if e.kind == maximized:
+      if e.value:
+        this.currentBorderWidth[] = 0
+      else:
+        this.currentBorderWidth[] = this.borderWidth[]
 
 
-proc createWindow*(rootObj: Uiobj): UiWindow =
-  result = newOpenglWindow(
-    title = "Animaui",
-    # size = ivec2(config.window_width[].int32, config.window_height[].int32),
-    transparent = true,
-    frameless = true,
-  ).newUiWindow
-  result.siwinWindow.minSize = ivec2(540, 320)
-  # if config.window_maximized: result.siwinWindow.maximized = true
+method init*(this: DecoratedWindow) =
+  procCall this.super.init()
 
-  # let this = result
-  # config.csd.changed.connectTo result:
-  #   this.siwinWindow.frameless = config.csd
-  
-  let dmWin = WindowDecorations()
+  this.binding currentBorderWidth:
+    if this.siwinWindow.maximized: 0'f32
+    else: this.borderWidth[]
 
-  result.makeLayout:
+  this.makeLayout:
+    this.bindingValue this.siwinWindow.minSize: root.minSize[]
+
     - RectShadow():
       this.fill(parent)
-      radius = 7.5
-      blurRadius = 10
+      radius := root.borderRadius[]
+      blurRadius := root.currentBorderWidth[]
       color = color(0, 0, 0, 0.3)
-      # this.binding visibility:
-      #   if config.window_maximized[]: Visibility.hidden
-      #   else:
-      #     if config.csd[]: Visibility.visible
-      #     else: Visibility.hidden
 
-    - dmWin:
-      this.fill(parent)
+      - ClipRect():
+        this.fill(parent, root.currentBorderWidth[])
+        on root.currentBorderWidth.changed:
+          this.fill(parent, root.currentBorderWidth[])
 
-      - MouseArea():
-        this.fill(parent)
-        dmWin.mouse = this
+        radius := root.borderRadius[]
 
-        this.grabbed.connectTo dmWin, pos:
-          if dmWin.edge != 0:
-            this.parentWindow.startInteractiveResize(
-              case dmWin.edge
-              of 1: Edge.top
-              of 2: Edge.topRight
-              of 3: Edge.right
-              of 4: Edge.bottomRight
-              of 5: Edge.bottom
-              of 6: Edge.bottomLeft
-              of 7: Edge.left
-              of 8: Edge.topLeft
-              else: Edge.left,
-              some pos
-            )
+        proc updateSiwinWindowRegions =
+          if this.w[] <= 0 or this.h[] <= 0: return
+          root.siwinWindow.setInputRegion(this.xy, this.wh)
+          root.siwinWindow.setBorderWidth(1, root.currentBorderWidth[], (root.currentBorderWidth[] * 2).max(10))
+          root.siwinWindow.setTitleRegion(this.xy, vec2(this.w[], root.titleHeight[]))
+        
+        on this.w.changed:
+          updateSiwinWindowRegions()
+        on this.h.changed:
+          updateSiwinWindowRegions()
+        on root.currentBorderWidth.changed:
+          updateSiwinWindowRegions()
+        on root.titleHeight.changed:
+          updateSiwinWindowRegions()
+        
+        - UiRect():
+          this.fill(parent)
+          color := root.backgroundColor[]
 
-        - ClipRect():
-          dmWin.clipRect = this
-          this.radius[] = 7.5
+          root.newChildsObject = this
 
-          - UiRect():
-            this.fill(parent)
-            dmWin.windowFrame = this
-            this.binding color: "#202020".parseHtmlColor
-            
-            - rootObj:
-              this.fill(parent)
-  
 
-  # config.csd.changed.connectTo dmWin:
-  #   updateChilds(dmWin)
-  updateChilds(dmWin, initial=true)
+proc newDecoratedWindow*(siwinWindow: Window): DecoratedWindow =
+  new result
+  result.siwinWindow = siwinWindow
+  loadExtensions()
+  result.setupEventsHandling()
+  result.ctx = newDrawContext()
+  init result

@@ -1,5 +1,4 @@
 import sigui/[uibase, mouseArea, layouts], siwin
-import ../utils
 
 type
   ToolKind* = enum
@@ -29,15 +28,15 @@ const opacityIcon = staticRead "../../icons/toolbar/opacity.svg"
 proc newToolbarTool(icon: string): ToolbarTool =
   new result
   result.makeLayout:
-    this.binding color:
-      if mouse.pressed[] or root.selected[]: "202020"
-      elif mouse.hovered[]: "383838"
-      else: "303030"
+    color = binding:
+      if mouse.pressed[] or root.selected[]: "202020".toColor.static
+      elif mouse.hovered[]: "383838".toColor.static
+      else: "303030".toColor.static
 
     - UiSvgImage():
       this.centerIn parent
-      this.image[] = icon
-      this.color[] = "fff"
+      image = icon
+      color = "fff".toColor.static
     
     - MouseArea() as mouse:
       this.fill parent

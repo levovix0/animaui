@@ -1,6 +1,6 @@
-import options, strutils, chroma, macros
-import siwin, fusion/matching
-import sigui/[uibase, mouseArea]
+import std/[options, strutils, macros]
+import pkg/[chroma, pixie, siwin]
+import pkg/sigui/[uibase, mouseArea]
 
 type
   Button = ref object of UiRect
@@ -15,7 +15,7 @@ registerComponent WindowHeader
 
 
 macro c(g: static string): Col =
-  if g.len == 2: 
+  if g.len == 2:
     let c = g.parseHexInt.byte
     newCall(bindSym"color", newCall(bindSym"rgbx", newLit c, newLit c, newLit c, newLit 255))
   else:
@@ -25,6 +25,8 @@ macro c(g: static string): Col =
 
 proc newButton*(icon: string): Button =
   result = Button()
+  initIfNeeded(result)
+
   result.makeLayout:
     wh = vec2(50, 40)
 
@@ -54,12 +56,13 @@ proc newButton*(icon: string): Button =
         else: c"30"
 
 
-proc newWindowHeader*(): WindowHeader =
-  result = WindowHeader()
-  result.makeLayout:
-    this.binding color: c"30"
+method init*(this: WindowHeader) =
+  procCall this.super.init()
 
-    - newMouseArea():
+  this.makeLayout:
+    color = c"30"
+
+    - MouseArea():
       this.fill parent
 
       this.grabbed.connectTo root:

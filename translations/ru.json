@@ -1,10 +1,23 @@
 {
-  "src/animaui/editor.nim": {
-    "Render": {
-      "": "Отрисовать"
+  "src/animaui/editor/commands_core/add_rect.nim": {
+    "Select first point:": {
+      "": "Выберите первую точку:"
     },
+    "Select second point:": {
+      "": "Выберите вторую точку:"
+    }
+  },
+  "src/animaui/animauiEditor.nim": {
     "Add file": {
       "": "Добавить файл"
+    },
+    "Render": {
+      "": "Вывод видео"
+    }
+  },
+  "src/animaui/editor/editor.nim": {
+    "Select point:": {
+      "": "Выберите точку:"
     }
   }
 }

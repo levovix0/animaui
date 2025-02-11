@@ -1,7 +1,8 @@
-import algorithm, times, sequtils, logging, osproc
+import std/[algorithm, times, sequtils, logging, osproc, importutils, asyncdispatch]
 import sigui/[uibase, mouseArea, globalShortcut, animations, layouts], siwin, cligen, localize
 import utils, window, windowHeader
-import editor/[fonts, timeline, toolbar, keyframes, scene]
+import editor/[fonts, timeline, toolbar, keyframes, scene, editor, commands, commands_core]
+import editor/commands_core/[add_rect]
 
 requireLocalesToBeTranslated ("ru", "")
 
@@ -56,13 +57,11 @@ proc animaui =
   logging.addHandler newConsoleLogger(fmtStr = "[$date at $time]:$levelname ")
   logging.addHandler newFileLogger("animaui.log", fmWrite, fmtStr = "[$date at $time]:$levelname ")
 
-  # let win = newOpenglWindow().newUiWindow
-  var root = UiObj()
-  let win = createWindow(root)
+  var root = newOpenglWindow(title="animaui editor", frameless = true, transparent = true).newDecoratedWindow
+  let win = root
 
   globalLocale[0] = systemLocale()
 
-  # win.clearColor = "202020"
   fonts.firaCode = static(staticRead "../../fonts/FiraCode.ttf").parseTtf
   fonts.comfortaa = static(staticRead "../../fonts/Comfortaa.ttf").parseTtf
   fonts.notoSans = static(staticRead "../../fonts/NotoSans-Regular.ttf").parseTtf
@@ -70,7 +69,8 @@ proc animaui =
   var selectedObject: Property[SceneObject]
 
   root.makeLayout:
-  # win.makeLayout:
+    let this = root.newChildsObject
+
     proc sceneToPx(xy: Vec2): Vec2 =
       let ptSize = min(scene.w[], scene.h[]) / 50
       return xy * ptSize
@@ -88,6 +88,34 @@ proc animaui =
       keyframes.add Keyframe[T](time: time)
       return keyframes[^1]
     
+
+    let editor = Editor(currentScene: scene)
+
+    privateAccess CommandInvokationContext
+    let cictx = CommandInvokationContext(
+      untyped_editor: editor,
+    )
+
+
+    this.onSignal.connectTo this, signal:
+      if signal of WindowEvent:
+        let ev = signal.WindowEvent.event
+        if ev of MouseButtonEvent:
+          let e = (ref MouseButtonEvent)ev
+          editor.on_mouseButton(e[])
+
+
+    toolbar.currentTool.changed.connectTo this:
+      case toolbar.currentTool[]
+      of ToolKind.rect:
+        asyncCheck (proc(ctx: CommandInvokationContext, toolbar: Toolbar) {.async.} =
+          command_add_rect(ctx).await
+          toolbar.currentTool[] = ToolKind.arrow
+        )(cictx, toolbar)
+
+      else:
+        discard
+
 
     - UiRect() as scenearea:
       this.fill parent
@@ -121,8 +149,8 @@ proc animaui =
         
         this.centerIn parent
 
-        timelinePanel.currentTime.changed.connectTo this, time:
-          this.setTime(time)
+        timelinePanel.currentTime.changed.connectTo this:
+          this.setTime(timelinePanel.currentTime[])
       
       # --- borders ---
       - UiRect():
@@ -164,7 +192,7 @@ proc animaui =
         else: Visibility.collapsed
 
 
-      var eh: EventHandler      
+      var eh: EventHandler
 
       var horizontalSnapping = false.property
       var verticalSnapping = false.property
@@ -183,11 +211,11 @@ proc animaui =
           timelinePanel.colorActions[] = @[]
           timelinePanel.opacityActions[] = @[]
 
-      this.pressed.changed.connectTo this, pressed:
+      this.pressed.changed.connectTo this:
         disconnect eh
         horizontalSnapping[] = false
         verticalSnapping[] = false
-        if not pressed: return
+        if not this.pressed[]: return
 
         if toolbar.currentTool[] != ToolKind.arrow: return
         let pos = vec2(this.mouseX[], this.mouseY[]).posToObject(this, scene)
@@ -195,9 +223,9 @@ proc animaui =
         proc findObjectAt(parent: UiObj, xy: Vec2): UiObj =
           for x in parent.childs.reversed:
             if not (x of SceneObject): continue
-            let r = x.findObjectAt(xy - x.xy[])
+            let r = x.findObjectAt(xy - x.xy)
             if r != nil: return r
-            if xy.overlaps bumpy.rect(x.xy[], x.wh[]):
+            if xy.overlaps bumpy.rect(x.xy, x.wh):
               return x
         let obj = scene.findObjectAt(xy)
         if obj == nil or obj.SceneObject.internalObject == nil:
@@ -279,8 +307,8 @@ proc animaui =
         if toolbar.currentTool[] != ToolKind.arrow: return
         
         let obj = selectedObject[]
-        let origin = posToObject(scene, obj, (originw - win.siwinWindow.pos).vec2.posToLocal(scene).pxToScene)
-        let startPos = obj.xy[]
+        let origin = posToObject(scene, obj, (originw - win.siwinWindow.pos.vec2).posToLocal(scene).pxToScene)
+        let startPos = obj.xy
 
         proc updatePos() =
           var pos = vec2(this.mouseX[], this.mouseY[]).posToObject(this, scene).pxToScene - origin
@@ -297,10 +325,10 @@ proc animaui =
               horizontalSnapping[] = false
               verticalSnapping[] = true
           else:
-            let center = (scene.wh[] / 2).pxToScene
-            if abs((pos + obj.wh[] / 2) - center).length < 3:
+            let center = (scene.wh / 2).pxToScene
+            if abs((pos + obj.wh / 2) - center).length < 3:
               # snap to center
-              pos = center - obj.wh[] / 2
+              pos = center - obj.wh / 2
               horizontalSnapping[] = true
               verticalSnapping[] = true
             else:
@@ -309,7 +337,7 @@ proc animaui =
           
           obj.xKeyframes.keyframeForTime(time).value = pos.x
           obj.yKeyframes.keyframeForTime(time).value = pos.y
-          obj.xy[] = pos
+          obj.xy = pos
           timelinePanel.actions[] = obj.xKeyframes.mapit(Keyframe[void](time: it.time, changeDuration: it.changeDuration))
         
         updatePos()
@@ -328,88 +356,88 @@ proc animaui =
           if toolbar.currentTool[] != ToolKind.arrow or (this.w[] == 0 and this.h[] == 0): Visibility.hiddenTree
           else: Visibility.visible
         
-        selectedObject.changed.connectTo this, obj:
-          if obj == nil or obj.internalObject == nil:
+        selectedObject.changed.connectTo this:
+          if selectedObject[] == nil or selectedObject[].internalObject == nil:
             this.left = Anchor()
             this.right = Anchor()
             this.top = Anchor()
             this.bottom = Anchor()
-            this.xy[] = vec2()
-            this.wh[] = vec2()
+            this.xy = vec2()
+            this.wh = vec2()
           else:
-            this.fill(obj.internalObject, -2)
+            this.fill(selectedObject[].internalObject, -2)
 
 
-    - MouseArea():  # rect tool
-      this.fill scenearea
+    # - MouseArea():  # rect tool
+    #   this.fill scenearea
 
-      this.ignoreHandling[] = true
+    #   this.ignoreHandling[] = true
 
-      var oldPos: Property[Vec2]
-      var prevPos: Vec2
+    #   var oldPos: Property[Vec2]
+    #   var prevPos: Vec2
 
-      this.binding visibility:
-        if toolbar.currentTool[] == ToolKind.rect: Visibility.visible
-        else: Visibility.collapsed
+    #   this.binding visibility:
+    #     if toolbar.currentTool[] == ToolKind.rect: Visibility.visible
+    #     else: Visibility.collapsed
 
-      var operationStarted = false
+    #   var operationStarted = false
 
-      proc finishOperation =
-        operationStarted = false
-        let d = posToObject(this, scene, vec2(this.mouseX[], this.mouseY[]))
-        let oldPos = posToObject(this, scene, oldPos[])
-        var r = bumpy.rect(oldPos.pxToScene, (d - oldPos).pxToScene)
-        if r.w < 0:
-          r.x = r.x + r.w
-          r.w = -r.w
-        if r.h < 0:
-          r.y = r.y + r.h
-          r.h = -r.h
-        scene.makeLayout:
-          - SceneObject() as o:
-            this.kind[] = rect
-            this.color[] = "fff"
-            this.opacity[] = 1
+    #   proc finishOperation =
+    #     operationStarted = false
+    #     let d = posToObject(this, scene, vec2(this.mouseX[], this.mouseY[]))
+    #     let oldPos = posToObject(this, scene, oldPos[])
+    #     var r = bumpy.rect(oldPos.pxToScene, (d - oldPos).pxToScene)
+    #     if r.w < 0:
+    #       r.x = r.x + r.w
+    #       r.w = -r.w
+    #     if r.h < 0:
+    #       r.y = r.y + r.h
+    #       r.h = -r.h
+    #     scene.makeLayout:
+    #       - SceneObject() as o:
+    #         this.kind[] = rect
+    #         this.color[] = "fff"
+    #         this.opacity[] = 1
 
-            this.x[] = r.x
-            this.y[] = r.y
-            this.w[] = r.w
-            this.h[] = r.h
+    #         this.x[] = r.x
+    #         this.y[] = r.y
+    #         this.w[] = r.w
+    #         this.h[] = r.h
           
-          selectedObject[] = o
+    #       selectedObject[] = o
 
-      this.pressed.changed.connectTo this, pressed:
-        if pressed:
-          oldPos[] = vec2(this.mouseX[], this.mouseY[])
-          if toolbar.currentTool[] == ToolKind.rect:
-            operationStarted = true
-        else:
-          if toolbar.currentTool[] == ToolKind.rect:
-            finishOperation()
+    #   this.pressed.changed.connectTo this:
+    #     if this.pressed[]:
+    #       oldPos[] = vec2(this.mouseX[], this.mouseY[])
+    #       if toolbar.currentTool[] == ToolKind.rect:
+    #         operationStarted = true
+    #     else:
+    #       if toolbar.currentTool[] == ToolKind.rect:
+    #         finishOperation()
       
-      toolbar.currentTool.changed.connectTo this:
-        if toolbar.currentTool[] != ToolKind.rect and operationStarted:
-          finishOperation()
+    #   toolbar.currentTool.changed.connectTo this:
+    #     if toolbar.currentTool[] != ToolKind.rect and operationStarted:
+    #       finishOperation()
       
-      proc updatePos =
-        if ({Key.lalt, Key.ralt} * this.parentWindow.keyboard.pressed).len > 0:
-          oldPos[] = oldPos[] + (vec2(this.mouseX[], this.mouseY[]) - prevPos)
-        prevPos = vec2(this.mouseX[], this.mouseY[])
+    #   proc updatePos =
+    #     if ({Key.lalt, Key.ralt} * this.parentWindow.keyboard.pressed).len > 0:
+    #       oldPos[] = oldPos[] + (vec2(this.mouseX[], this.mouseY[]) - prevPos)
+    #     prevPos = vec2(this.mouseX[], this.mouseY[])
 
-      this.mouseX.changed.connectTo this: updatePos()
-      this.mouseY.changed.connectTo this: updatePos()
+    #   this.mouseX.changed.connectTo this: updatePos()
+    #   this.mouseY.changed.connectTo this: updatePos()
 
-      - UiRect():
-        this.binding x: oldPos[].x
-        this.binding y: oldPos[].y
-        this.binding w: parent.mouseX[] - oldPos[].x
-        this.binding h: parent.mouseY[] - oldPos[].y
+    #   - UiRect():
+    #     this.binding x: oldPos[].x
+    #     this.binding y: oldPos[].y
+    #     this.binding w: parent.mouseX[] - oldPos[].x
+    #     this.binding h: parent.mouseY[] - oldPos[].y
 
-        this.binding visibility:
-          if parent.pressed[] and toolbar.currentTool[] == ToolKind.rect: Visibility.visible
-          else: Visibility.hidden
+    #     this.binding visibility:
+    #       if parent.pressed[] and toolbar.currentTool[] == ToolKind.rect: Visibility.visible
+    #       else: Visibility.hidden
 
-        color = "88f8"
+    #     color = "88f8"
 
 
     - MouseArea():  # color tool
@@ -459,7 +487,7 @@ proc animaui =
           selectedObject[] = nil
 
 
-    - newTimelinePanel() as timelinePanel:
+    - TimelinePanel() as timelinePanel:
       this.fillHorizontal parent
       bottom = parent.bottom
       h = 150
@@ -474,9 +502,10 @@ proc animaui =
       left = parent.left
       w = 40
 
-    - newWindowHeader() as header:
+    - WindowHeader() as header:
       this.fillHorizontal parent
       h = 40
+      win.binding titleHeight: this.h[]
 
       - Layout():
         left = parent.left + 10
@@ -498,6 +527,15 @@ proc animaui =
           this.clicked.connectTo this:
             echo execCmdEx("kdialog --getopenfilename").output.strip
 
+
+  # infinite async loop to prevent asyncdispatch from crushing
+  asyncCheck (proc {.async.} =
+    while true:
+      await sleepAsync(1000)
+  )()
+
+  win.onTick.connectTo win:
+    asyncdispatch.poll(1)
 
   run win.siwinWindow
 

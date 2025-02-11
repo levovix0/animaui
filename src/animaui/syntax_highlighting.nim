@@ -79,20 +79,20 @@ proc parseNimCode*(s: Text, state: NimParseState, len = 100): tuple[segments: se
 
         else:
           case $s[state.pos ..< state.pos + l].toOpenArray.toSeq
-          of "func", "proc", "template", "iterator", "converter", "macro", "method", 
-            "addr", "asm", "bind", "concept", "const", "discard", "distinct", "enum", "export", "from", 
-            "import", "include", "interface", "let", "mixin", "nil", "object", "of", "out", "ptr", 
+          of "func", "proc", "template", "iterator", "converter", "macro", "method",
+            "addr", "asm", "bind", "concept", "const", "discard", "distinct", "enum", "export", "from",
+            "import", "include", "interface", "let", "mixin", "nil", "object", "of", "out", "ptr",
             "ref", "static", "tuple", "type", "using", "var", "true", "false", "off", "on", "low", "high", "lent", "sink":
             sKeyword
 
-          of "block", "break", "case", "continue", "defer", "do", "elif", "else", "end", "except", 
+          of "block", "break", "case", "continue", "defer", "do", "elif", "else", "end", "except",
             "finally", "for", "if", "raise", "return", "try", "when", "while", "yield":
             sControlFlow
           
           of "and", "as", "cast", "div", "in", "isnot", "is", "mod", "notin", "not", "or", "shl", "shr", "xor", "echo":
             sOperatorWord
           
-          of "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float32", "float64", 
+          of "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float32", "float64",
             "int", "float", "string", "bool", "byte", "uint", "seq", "set", "char", "void", "auto", "any", "pointer", "array":
             sBuiltinType
         
@@ -139,7 +139,7 @@ proc parseNimCode*(s: Text, state: NimParseState, len = 100): tuple[segments: se
           if (
             (peek(l) == rune"]") and
             (exist(l + 1) and peek(l + 1) == rune"#")
-          ): 
+          ):
             inc l, 2
             break
           if (not wasAlpha) and (peek(l).isAlpha): wasAlpha = true

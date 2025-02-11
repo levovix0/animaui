@@ -54,6 +54,11 @@ proc setTime*(this: Scene, time: Duration) =
   rec this
 
 
+proc pxToScene*(xy: Vec2, scene: Scene): Vec2 =
+  let ptSize = min(scene.w[], scene.h[]) / 50
+  return xy / ptSize
+
+
 method init*(this: SceneObject) =
   procCall this.super.init()
 
@@ -71,8 +76,8 @@ method init*(this: SceneObject) =
     result.wh = vec2(this.w[], this.h[]) * ptSize
 
 
-  this.kind.changed.connectTo this, kind:
-    if kind == none:
+  this.kind.changed.connectTo this:
+    if this.kind[] == none:
       this.internalObject = nil
       return
 
@@ -81,16 +86,16 @@ method init*(this: SceneObject) =
       elif this.internalObject of UiRect: SceneObjectKind.rect
       else: SceneObjectKind.none
 
-    if internalObjectKind == kind: return
+    if internalObjectKind == this.kind[]: return
 
-    this.internalObject = case kind
+    this.internalObject = case this.kind[]
       of none: nil.UiObj
       of rect: UiRect()
     
     this.internalObject.parent = this.parentScene
     init this.internalObject
     
-    case kind
+    case this.kind[]
     of rect:
       this.internalObject.UiRect.color[] = color(this.color[].r, this.color[].g, this.color[].b, this.opacity[])
     else: discard
@@ -105,13 +110,13 @@ method init*(this: SceneObject) =
   this.parentScene.w.changed.connectTo this, w:
     let r = this.queryRect
     if this.internalObject != nil:
-      this.internalObject.xy[] = r.xy
-      this.internalObject.wh[] = r.wh
+      this.internalObject.xy = r.xy
+      this.internalObject.wh = r.wh
   this.parentScene.h.changed.connectTo this, h:
     let r = this.queryRect
     if this.internalObject != nil:
-      this.internalObject.xy[] = r.xy
-      this.internalObject.wh[] = r.wh
+      this.internalObject.xy = r.xy
+      this.internalObject.wh = r.wh
 
   this.w.changed.connectTo this, w:
     let r = this.queryRect
@@ -149,13 +154,13 @@ method recieve*(this: SceneObject, signal: Signal) =
 
 proc render*(scene: Scene, resolution: Vec2, outfile: string, fps: int, fromTime, toTime: Duration) =
   let prevParent = scene.parent
-  let prevXy = scene.xy[]
-  let prevWh = scene.wh[]
+  let prevXy = scene.xy
+  let prevWh = scene.wh
 
   defer:
     scene.parent = prevParent
-    scene.xy[] = prevXy
-    scene.wh[] = prevWh
+    scene.xy = prevXy
+    scene.wh = prevWh
 
   scene.parent = nil
 
@@ -167,7 +172,7 @@ proc render*(scene: Scene, resolution: Vec2, outfile: string, fps: int, fromTime
       color = "202020"
 
     - scene:
-      this.xy[] = vec2(0, 0)
+      this.xy = vec2(0, 0)
       this.w[] = resolution.x
       this.h[] = resolution.y
 

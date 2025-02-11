@@ -45,7 +45,7 @@ type
   Code* = ref object of UiObj
     text*: Property[string]
     font*: Property[Font]
-    textObj*: CustomProperty[UiObj]
+    textObj*: ChangableChild[UiObj]
     syntax*: Property[CodeLanguage]
     color*: Property[Color] = color(1, 1, 1).property
   
@@ -127,7 +127,7 @@ method init*(this: Code) =
         let typeset = root.font[].typeset(root.text[])
         var highlighting = case root.syntax[]
           of nim: parseNimCode(text, NimParseState(), text.len).segments.colors
-          of text: sText.color.repeat(text.len)
+          of CodeLanguage.text: sText.color.repeat(text.len)
         var maxw, maxh: float32
 
         for i, x in typeset.selectionRects:

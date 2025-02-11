@@ -1,4 +1,4 @@
-import std/[times, strutils, sequtils]
+import std/[times, sequtils, strutils]
 import sigui/[uibase, mouseArea, globalShortcut, dolars], siwin
 import ../[utils]
 import ./[fonts, keyframes]
@@ -11,21 +11,22 @@ type
     currentTime*: Property[Duration]
     playing*: Property[bool]
 
-    startTime*: Property[Duration] 
-    endTime*: Property[Duration] 
+    startTime*: Property[Duration]
+    endTime*: Property[Duration]
     
-    actionsView: CustomProperty[Uiobj]
-    opacityActionsView: CustomProperty[Uiobj]
+    actionsView: ChangableChild[Uiobj]
+    opacityActionsView: ChangableChild[Uiobj]
+    texts: ChangableChild[Uiobj]
 
 registerComponent TimelinePanel
 
 
-proc newTimelinePanel*(): TimelinePanel =
-  result = TimelinePanel()
+method init*(this: TimelinePanel) =
+  procCall this.super.init()
 
-  result.endTime[] = initDuration(seconds=5)
+  this.endTime[] = initDuration(seconds=5)
 
-  result.makeLayout:
+  this.makeLayout:
     var timeScale = 0.5.property  # seconds per label
     var pixelsUntilText = 50.0.property  # pixels per label
     var startFromPixel = 20.0.property
@@ -35,7 +36,10 @@ proc newTimelinePanel*(): TimelinePanel =
 
     color = "303030"
 
+
     this.actionsView --- Uiobj():
+      <--- UiObj(): this.actions[]
+
       this.fillHorizontal parent
       h = 2
       bottom = parent.bottom - 20
@@ -48,7 +52,10 @@ proc newTimelinePanel*(): TimelinePanel =
           this.binding w: (x.changeDuration.toDuration.inMicroseconds() / 1_000_000) * (pixelsUntilText[] / timeScale[])
           color = "8f8"
 
+
     this.opacityActionsView --- Uiobj():
+      <--- UiObj(): this.opacityActions[]
+
       this.fillHorizontal parent
       h = 2
       # bottom = parent.bottom - 12
@@ -62,29 +69,21 @@ proc newTimelinePanel*(): TimelinePanel =
           this.binding w: (x.changeDuration.toDuration.inMicroseconds() / 1_000_000) * (pixelsUntilText[] / timeScale[])
           color = "888"
 
-    this.actions.changed.connectTo this: this.actionsView[] = UiObj()
-    this.opacityActions.changed.connectTo this: this.opacityActionsView[] = UiObj()
 
     - UiRect():
       this.fillVertical parent
-      this.binding w: parent.w[]
-      this.binding x: (startFromPixel[] - this.w[] + root.startTime[].timeToPx).max(-this.w[]).min(0)
-      # todo [in sigui]:
-      # w := parent.w
-      # x := (startFromPixel - this.w).max(-this.w).min(0)
-      # w = binding parent.w
-      # x = binding (startFromPixel - this.w).max(-this.w).min(0)
-      # visibility = binding:
-      #   if mouse.hovered and not mouse.pressed: Visibility.visible
-      #   else: Visibility.hiddenTree
+      w := parent.w[]
+      x := (startFromPixel[] - this.w[] + root.startTime[].timeToPx).max(-this.w[]).min(0)
 
       color = "282828"
+
 
     - UiRect():
       this.fillVertical parent
-      this.binding w: parent.w[]
-      this.binding x: (startFromPixel[] + root.endTime[].timeToPx).max(0).min(parent.w[])
+      w := parent.w[]
+      x := (startFromPixel[] + root.endTime[].timeToPx).max(0).min(parent.w[])
       color = "282828"
+
 
     - UiRect() as mouseCacert:
       this.fillVertical parent
@@ -125,19 +124,24 @@ proc newTimelinePanel*(): TimelinePanel =
       mouse.pressed.changed.connectTo this:
         if mouse.pressed[]: updateX()
     
+
     - UiRect() as cacert:
       this.fillVertical parent
       w = 1
       this.binding x: (root.currentTime[].inMicroseconds() / 1_000_000) * (pixelsUntilText[] / timeScale[]) + startFromPixel[]
       color = "aaa"
 
-    var texts: CustomProperty[UiObj]
-    texts --- UiObj():
+
+    root.texts --- UiObj():
+      <--- UiObj(): timeScale[]; pixelsUntilText[]; this.w[]; startFromPixel[]
+      # todo: CycledElement
+
       this.top = parent.top + 10
       this.h[] = 20
-      this.binding w: parent.w[]
-      this.binding x: (startFromPixel[] mod pixelsUntilText[])
+      w = parent.w[]
+      x = (startFromPixel[] mod pixelsUntilText[])
 
+      
       let count = (this.w[] / pixelsUntilText[]).int
       for i in 0..(count+1):
         let time = (-(startFromPixel[] / pixelsUntilText[]).int + i).float * timeScale[]
@@ -147,8 +151,8 @@ proc newTimelinePanel*(): TimelinePanel =
           font = (fonts.firaCode)(10)
           let timef = time.round(2)
           text = (if timef == timef.int.float: $timef.int else: $timef)
-          color = "aaa"
-          # this.centerX = parent.left + (i.float * pixelsUntilText[])
+          color = "aaa".toColor.static
+          this.centerX = parent.left + (i.float * pixelsUntilText[])
           x = (i.float * pixelsUntilText[]) - this.w[] / 2
 
           - UiRect():
@@ -162,56 +166,6 @@ proc newTimelinePanel*(): TimelinePanel =
             
             color = "777"
 
-      proc update =
-        let count = (this.w[] / pixelsUntilText[]).int
-        if this.childs.len > count+2: this.childs[count+1..^1] = @[]
-
-        for i in (this.childs.len)..(count+1):
-          let originalRoot = root
-          this.makeLayout:
-            - UiText():
-              centerY = parent.center
-              font = (fonts.firaCode)(10)
-              color = "aaa"
-              # this.centerX = parent.left + (i.float * pixelsUntilText[])
-              x = (i.float * pixelsUntilText[]) - this.w[] / 2
-
-              - UiRect():
-                drawLayer = before mouseCacert
-                left = parent.center
-                top = originalRoot.top
-                w = 1
-                this.binding h:
-                  if "." in parent.text[]: 5
-                  else: 8
-                
-                color = "777"
-        
-        var neededTexts: seq[string]
-
-        for i, x in this.childs:
-          let time = (-(startFromPixel[] / pixelsUntilText[]).int + i).float * timeScale[]
-          let timef = time.round(2)
-          neededTexts.add (if timef == timef.int.float: $timef.int else: $timef)
-
-        let correctChilds: seq[UiText] = this.childs.mapit(it.UiText).filterit(it.text[] in neededTexts)
-        var freeChilds: seq[UiText] = this.childs.mapit(it.UiText).filterit(it notin correctChilds)
-
-        for i, x in neededTexts:
-          block selectChild:
-            for y in correctChilds:
-              if y.text[] == x:
-                y.x[] = (i.float * pixelsUntilText[]) - y.w[] / 2
-                break selectChild
-            let y = freeChilds.pop
-            y.text[] = x
-            y.x[] = (i.float * pixelsUntilText[]) - y.w[] / 2
-
-      startFromPixel.changed.connectTo this: update()
-      this.w.changed.connectTo this: update()
-    
-    timeScale.changed.connectTo this: texts[] = UiObj()
-    pixelsUntilText.changed.connectTo this: texts[] = UiObj()
 
     - MouseArea() as rmouse:
       this.fill parent
@@ -222,34 +176,36 @@ proc newTimelinePanel*(): TimelinePanel =
           startFromPixel[] = startFromPixel[] + (this.mouseX[] - oldX)
         oldX = this.mouseX[]
 
+
     - MouseArea() as mouse:
       this.fill parent
       acceptedButtons = {MouseButton.left}
-    
+
+
     - globalShortcut({Key.q}):
-      this.activated.connectTo this:
+      on this.activated:
         root.currentTime[] = root.currentTime[] - initDuration(microseconds = int (timeScale[] / 20 * 1_000_000))
     
     - globalShortcut({Key.e}):
-      this.activated.connectTo this:
+      on this.activated:
         root.currentTime[] = root.currentTime[] + initDuration(microseconds = int (timeScale[] / 20 * 1_000_000))
     
     - globalShortcut({Key.lshift, Key.q}):
-      this.activated.connectTo this:
+      on this.activated:
         root.currentTime[] = root.currentTime[] - initDuration(microseconds = int (timeScale[] * 1_000_000))
     
     - globalShortcut({Key.lshift, Key.e}):
-      this.activated.connectTo this:
+      on this.activated:
         root.currentTime[] = root.currentTime[] + initDuration(microseconds = int (timeScale[] * 1_000_000))
       
     - globalShortcut({Key.lshift, Key.lbracket}):
-      this.activated.connectTo this:
+      on this.activated:
         root.startTime[] = root.currentTime[]
       
     - globalShortcut({Key.lshift, Key.rbracket}):
-      this.activated.connectTo this:
+      on this.activated:
         root.endTime[] = root.currentTime[]
     
     - globalShortcut({Key.space}):
-      this.activated.connectTo this:
+      on this.activated:
         root.playing[] = not root.playing[]

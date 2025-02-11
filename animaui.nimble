@@ -5,13 +5,13 @@ author        = "levovix0"
 description   = "Animation program for making cool lessons"
 license       = "MIT"
 srcDir        = "src"
-bin           = @["animaui/editor"]
+bin           = @["animaui/animauiEditor"]
 
 
 # Dependencies
 
 requires "nim >= 2.0.2"
-requires "sigui >= 0.1.3"  # для работы с графикой/UI
+requires "sigui >= 0.2.2"  # для работы с графикой/UI
 requires "imageman"  # для записи изображений
 requires "cligen"  # для CLI
 # requires "ffmpeg"  # для работы с видео

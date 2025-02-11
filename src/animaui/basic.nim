@@ -60,15 +60,15 @@ proc useFont*(name: string): Typeface =
   parseTtf(readFile fontDirectory / name & ".ttf")
 
 
-let win = 
-  when defined(preview): 
+let win =
+  when defined(preview):
     newOpenglWindow(size = ivec2(width, height)).newUiWindow
   else:
     newOpenglContext().newUiWindow
 
 
 var this* = ClipRect()
-this.wh[] = vec2(width.float, height.float)
+this.wh = vec2(width.float, height.float)
 
 var timepoint*: Duration
 
@@ -386,13 +386,13 @@ proc render*() =
         this.binding image:
           if paused[]: pause else: play
 
-        this.color[] = "fff0"
+        this.color[] = "fff0".toColor.static
 
         - Animation[chroma.Color]() as playpause_color_anim:
           this.easing[] = proc(x: float): float = 1 - (x * 2 - 1).pow(2)
           this.duration[] = changeDuration
-          this.a[] = "fff0"
-          this.b[] = "fffa"
+          this.a[] = "fff0".toColor.static
+          this.b[] = "fffa".toColor.static
           this.action = proc(x: chroma.Color) = parent.color[] = x
 
         - Animation[float]() as playpause_size_anim:
@@ -400,7 +400,7 @@ proc render*() =
           this.duration[] = changeDuration
           this.a[] = 0
           this.b[] = 4.pt
-          this.action = proc(x: float) = parent.wh[] = vec2(x, x)
+          this.action = proc(x: float) = parent.wh = vec2(x, x)
       
       - MouseArea() as mouse:
         this.fill parent
@@ -427,14 +427,14 @@ proc render*() =
             &"{x / 1.pt:.2f},  {y / 1.pt:.2f} [pt]" &
             (if w != 0 and h != 0: &"\n{w / 1.pt:.2f} x {h / 1.pt:.2f} [pt]" else: "")
 
-          overlap_rect.xy[] = vec2(x, y)
-          overlap_rect.wh[] = vec2(w, h)
+          overlap_rect.xy = vec2(x, y)
+          overlap_rect.wh = vec2(w, h)
           redraw win.siwinWindow
 
         this.mouseX.changed.connectTo this: f()
         this.mouseY.changed.connectTo this: f()
-        this.pressed.changed.connectTo this, val:
-          if not val: return
+        this.pressed.changed.connectTo this:
+          if not this.pressed[]: return
           oldPos = vec2(this.mouseX[], this.mouseY[])
           f()
 
