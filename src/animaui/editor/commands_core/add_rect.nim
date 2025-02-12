@@ -1,12 +1,13 @@
-import std/[asyncdispatch]
-import pkg/[localize, bumpy, vmath]
+import pkg/[localize, bumpy, vmath, chronos]
 import pkg/sigui/[uibase]
 import ../[commands, editor, scene]
 
 
-proc command_add_rect*(ctx: CommandInvokationContext) {.async.} =
-  let a = ctx.editor.getRequiredPoint(tr("Select first point:"))
-  let b = ctx.editor.getRequiredPoint(tr("Select second point:"))
+proc command_add_rect*(ctx: CommandInvokationContext) {.async: (raises: [Exception]).} =
+  let a = ctx.editor.getRequiredPoint(ctx.tr("Select first point:"))
+  let b = ctx.editor.getRequiredPoint(ctx.tr("Select second point:"))
+
+  if a == b: return
 
   var r = bumpy.rect(a.vec2, (b - a).vec2)
   if r.w < 0:
@@ -16,13 +17,15 @@ proc command_add_rect*(ctx: CommandInvokationContext) {.async.} =
     r.y = r.y + r.h
     r.h = -r.h
   
-  ctx.scene.makeLayout:
-    - SceneObject() as o:
-      this.kind[] = rect
-      this.color[] = "fff"
-      this.opacity[] = 1
+  {.cast(gcsafe).}:
+    ctx.scene.makeLayout:
+      - SceneObject() as o:
+        this.kind[] = rect
+        this.color[] = "fff"
+        this.opacity[] = 1
 
-      this.x[] = r.x
-      this.y[] = r.y
-      this.w[] = r.w
-      this.h[] = r.h
+        this.x[] = r.x
+        this.y[] = r.y
+        this.w[] = r.w
+        this.h[] = r.h
+

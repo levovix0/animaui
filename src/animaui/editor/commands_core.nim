@@ -1,3 +1,5 @@
+{.used.}
+
 import ./[commands]
 import ./commands_core/[add_rect]
 

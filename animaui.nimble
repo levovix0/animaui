@@ -17,3 +17,4 @@ requires "cligen"  # для CLI
 # requires "ffmpeg"  # для работы с видео
 requires "localize"  # для локализации текста
 requires "suru"  # для показывание прогресса рендеринга
+requires "chronos"  # for cancelable {.async.} procs. Async is used for commands that need to wait for user input

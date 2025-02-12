@@ -1,6 +1,7 @@
-import std/[algorithm, times, sequtils, logging, osproc, importutils, asyncdispatch]
-import sigui/[uibase, mouseArea, globalShortcut, animations, layouts], siwin, cligen, localize
-import utils, window, windowHeader
+import std/[algorithm, times, sequtils, logging, osproc, importutils, options]
+import pkg/[siwin, cligen, localize, chronos]
+import sigui/[uibase, mouseArea, globalShortcut, animations, layouts]
+import window, windowHeader
 import editor/[fonts, timeline, toolbar, keyframes, scene, editor, commands, commands_core]
 import editor/commands_core/[add_rect]
 
@@ -80,7 +81,7 @@ proc animaui =
       return xy / ptSize
 
 
-    proc keyframeForTime[T](keyframes: var seq[Keyframe[T]], time: Duration): var Keyframe[T] =
+    proc keyframeForTime[T](keyframes: var seq[Keyframe[T]], time: times.Duration): var Keyframe[T] =
       for kf in keyframes.mitems:
         if kf.time.inMilliseconds == time.inMilliseconds:
           return kf
@@ -89,12 +90,49 @@ proc animaui =
       return keyframes[^1]
     
 
+    type CurrentCommand = object
+      future: Future[void]
+
+    var currentCommand: Option[CurrentCommand]
     let editor = Editor(currentScene: scene)
 
     privateAccess CommandInvokationContext
     let cictx = CommandInvokationContext(
       untyped_editor: editor,
     )
+    
+
+    proc cancelCurrentCommand() =
+      editor.cancelAllPendingRequests()
+
+      if currentCommand.isSome:
+        currentCommand.get.future.cancelAndWait().waitFor
+        currentCommand = none CurrentCommand
+
+
+    proc spawnCommand(action: proc(ctx: CommandInvokationContext) {.async: (raises: [Exception]).}) =
+      cancelCurrentCommand()
+
+      currentCommand = some CurrentCommand(
+        future: (proc(ctx: CommandInvokationContext) {.async: (raises: [Exception]).} =
+          action(ctx).await
+          currentCommand = none CurrentCommand
+        )(cictx)
+      )
+
+
+    proc currentCommandReraiseErrorsLoop() {.async: (raises: [Exception]).} =
+      while true:
+        if currentCommand.isSome:
+          if currentCommand.get.future.failed:
+            raise currentCommand.get.future.readError
+            # currentCommand = none CurrentCommand
+            # todo: don't crush whole app on non-critical exceptions in command
+        await sleepAsync(1.millis)
+
+
+    asyncSpawn editor.reraiseErrorsLoop()
+    asyncSpawn currentCommandReraiseErrorsLoop()
 
 
     this.onSignal.connectTo this, signal:
@@ -108,13 +146,17 @@ proc animaui =
     toolbar.currentTool.changed.connectTo this:
       case toolbar.currentTool[]
       of ToolKind.rect:
-        asyncCheck (proc(ctx: CommandInvokationContext, toolbar: Toolbar) {.async.} =
+        spawnCommand (proc(ctx: CommandInvokationContext) {.async: (raises: [Exception]).} =
           command_add_rect(ctx).await
-          toolbar.currentTool[] = ToolKind.arrow
-        )(cictx, toolbar)
+          try:
+            {.cast(gcsafe).}:
+              currentCommand = none CurrentCommand
+              toolbar.currentTool[] = ToolKind.arrow
+          except: discard
+        )
 
       else:
-        discard
+        cancelCurrentCommand()
 
 
     - UiRect() as scenearea:
@@ -528,14 +570,9 @@ proc animaui =
             echo execCmdEx("kdialog --getopenfilename").output.strip
 
 
-  # infinite async loop to prevent asyncdispatch from crushing
-  asyncCheck (proc {.async.} =
-    while true:
-      await sleepAsync(1000)
-  )()
 
   win.onTick.connectTo win:
-    asyncdispatch.poll(1)
+    chronos.poll()
 
   run win.siwinWindow
 

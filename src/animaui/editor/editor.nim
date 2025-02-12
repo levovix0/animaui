@@ -1,5 +1,5 @@
-import std/[importutils, asyncdispatch]
-import pkg/[vmath, siwin, localize]
+import std/[importutils]
+import pkg/[vmath, siwin, localize, chronos]
 import pkg/sigui/[uibase]
 import ./[scene, commands]
 
@@ -37,6 +37,8 @@ type
     finishedRequest*: Event[EditorRequest]
 
     pendingRequests: seq[EditorRequest]
+    pendingErrors: seq[ref Exception]
+      ## errors, raised in commands, but not related to them
 
 
 # todo: move to another file -->
@@ -51,10 +53,12 @@ proc vec2*(v: Vec3): Vec2 =
 
 
 
-proc addPendingRequest(editor: Editor, request: EditorRequest) =
+proc addPendingRequest(editor: Editor, request: EditorRequest) {.gcsafe, raises: [Exception].} =
   editor.pendingRequests.add(request)
   if editor.pendingRequests.len == 1:
-    editor.startedRequest.emit(request)
+    {.cast(gcsafe).}:
+      editor.startedRequest.emit(request)
+
 
 
 proc finishCurrentRequest(editor: Editor) =
@@ -67,6 +71,16 @@ proc finishCurrentRequest(editor: Editor) =
     editor.startedRequest.emit(editor.pendingRequests[0])
 
 
+proc cancelAllPendingRequests*(editor: Editor) =
+  while editor.pendingRequests.len != 0:
+    case editor.pendingRequests[0].kind
+    of point:
+      editor.pendingRequests[0].point_future.complete(EditorRequestResult[Vec3](status: canceled))
+
+    editor.finishedRequest.emit(editor.pendingRequests[0])
+    editor.pendingRequests.delete(0)
+
+
 proc editor*(ctx: CommandInvokationContext): Editor =
   privateAccess CommandInvokationContext
   ctx.untyped_editor.Editor
@@ -76,9 +90,14 @@ proc scene*(ctx: CommandInvokationContext): Scene =
   ctx.editor.currentScene
 
 
-proc getPoint*(editor: Editor, args: EditorPointRequest): Future[EditorRequestResult[Vec3]] =
+proc getPoint*(editor: Editor, args: EditorPointRequest): Future[EditorRequestResult[Vec3]] {.gcsafe, raises: [].} =
   result = newFuture[EditorRequestResult[Vec3]]("getPoint")
-  editor.addPendingRequest EditorRequest(kind: point, point_args: args, point_future: result)
+  try:
+    editor.addPendingRequest EditorRequest(kind: point, point_args: args, point_future: result)
+  except Exception as e:
+    result.cancelSoon  # cancel command if an editor error occured
+    editor.pendingErrors.add e
+
 
 
 proc getPoint*(
@@ -124,3 +143,10 @@ method on_mouseButton*(editor: Editor, event: MouseButtonEvent) {.base.} =
 
       editor.finishCurrentRequest()
 
+
+proc reraiseErrorsLoop*(editor: Editor) {.async: (raises: [Exception]).} =
+  while true:
+    while editor.pendingErrors.len != 0:
+      raise editor.pendingErrors[0]
+    
+    await sleepAsync(1.millis)

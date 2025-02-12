@@ -1,4 +1,5 @@
-import std/[asyncdispatch, algorithm, unicode]
+import std/[algorithm, unicode]
+import pkg/[chronos, localize {.all.}]
 
 type
   CommandIconKind* = enum
@@ -11,13 +12,15 @@ type
 
   
   CommandInvokationContext* = ref object of RootObj
+    locale*: (Locale, LocaleTable)
+
     untyped_editor: ref RootObj
 
 
   Command* = object
     name*: string
     icon*: CommandIcon
-    action*: proc(ctx: CommandInvokationContext) {.async.}
+    action*: proc(ctx: CommandInvokationContext) {.async: (raises: [Exception]).}
 
 
   MatchInfo* = object
@@ -94,6 +97,11 @@ proc findByName*(commands: Commands, query: string, trueshold: int = 0): seq[tup
 proc add*(cmds: Commands, cmd: Command) =
   cmds.commands.add(cmd)
 
+
+template tr*(ctx: CommandInvokationContext, text: static string, context: static string = ""): string =
+  bind trImpl
+  let langv {.cursor.} = ctx.locale
+  trImpl(text, context, instantiationInfo(index=0, fullPaths=true).filename, langv)
 
 
 when isMainModule:
