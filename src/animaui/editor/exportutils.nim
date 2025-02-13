@@ -8,14 +8,32 @@ when animaui_use_shared:
 
 macro animaui_api*(body) =
   proc reprIdentSafe(x: NimNode): string =
-    result = x.repr
-    var i = 0
-    while i < result.len:
-      if result[i] notin {'a'..'z', 'A'..'Z', '_'}:
-        result[i..i] = ""
-      inc i
+    for c in x.repr:
+      case c
+      of {'a'..'z', 'A'..'Z', '0'..'9', '_'}:
+        result.add c
+      of '{':
+        result.add "_lb"
+      of '}':
+        result.add "_rb"
+      of '<':
+        result.add "_lt"
+      of '>':
+        result.add "_gt"
+      of '=':
+        result.add "_eq"
+      of '[':
+        result.add "_lq"
+      of ']':
+        result.add "_rq"
+      of '(':
+        result.add "_ls"
+      of ')':
+        result.add "_gs"
+      else:
+        discard
 
-  var mangledName = $body.name
+  var mangledName = "_" & reprIdentSafe(body.name)
 
   if body.params[0].kind == nnkEmpty:
     mangledName &= "_"

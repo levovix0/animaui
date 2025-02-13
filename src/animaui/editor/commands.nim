@@ -1,5 +1,7 @@
 import std/[algorithm, unicode]
 import pkg/[chronos, localize {.all.}]
+import ./[entities]
+
 
 type
   CommandIconKind* = enum
@@ -13,6 +15,7 @@ type
   
   CommandInvokationContext* = ref object of RootObj
     locale*: (Locale, LocaleTable)
+    database*: Database
 
     untyped_editor: ref RootObj
 
@@ -102,6 +105,9 @@ template tr*(ctx: CommandInvokationContext, text: static string, context: static
   bind trImpl
   let langv {.cursor.} = ctx.locale
   trImpl(text, context, instantiationInfo(index=0, fullPaths=true).filename, langv)
+
+
+proc db*(ctx: CommandInvokationContext): Database {.inline.} = ctx.database
 
 
 when isMainModule:

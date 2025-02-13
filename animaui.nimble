@@ -11,10 +11,11 @@ bin           = @["animaui/animauiEditor"]
 # Dependencies
 
 requires "nim >= 2.0.2"
-requires "sigui >= 0.2.2"  # для работы с графикой/UI
-requires "imageman"  # для записи изображений
-requires "cligen"  # для CLI
-# requires "ffmpeg"  # для работы с видео
-requires "localize"  # для локализации текста
-requires "suru"  # для показывание прогресса рендеринга
+requires "sigui >= 0.2.2"  # for working with graphics/UI
+requires "imageman"  # to write image files
+requires "cligen"  # for CLI
+# requires "ffmpeg"  # to work with video
+requires "localize"  # for adding text translations
+requires "suru"  # to show progress bar while rendering (in CLI mode)
 requires "chronos"  # for cancelable {.async.} procs. Async is used for commands that need to wait for user input
+requires "jsony"  # for json serialization
