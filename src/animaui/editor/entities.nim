@@ -1,5 +1,5 @@
 import std/[macros, times, tables, macrocache, streams, sequtils, os]
-import pkg/[vmath, chroma, jsony]
+import pkg/[jsony]
 import pkg/sigui/[events]
 import ./[exportutils]
 
@@ -14,11 +14,14 @@ type
 
   EntityId* = distinct int64
 
+  EntityIdOf*[T] = distinct EntityId
+
 
   Entity* = ref object of RootObj
     id*: EntityId
     changed*: Event[Entity]
     destroyed*: Event[Entity]
+    database* {.cursor.}: Database
   
 
   TypeInfo* = object
@@ -33,6 +36,8 @@ type
     entityDestroyed*: Event[Entity]
 
     typeRegistry*: Table[tuple[module, name: string], TypeInfo]
+
+    nextUnusedId*: EntityId
   
 
   UndoState* = object
@@ -77,23 +82,6 @@ type
     data*: string
 
 
-  EntityDrawContext* = ref object of RootObj
-    screenCoordinateSystem*: Mat4
-
-  FrameEntity* = ref object of Entity
-    ecs*: Mat4 = mat4(1, 0, 0, 0,  0, 1, 0, 0,  0, 0, 1, 0,  0, 0, 0, 1)
-      ## internal coordinate system (a matrix that transforms a coordinate from internal space to world space)
-    color*: Color
-
-
-  SceneEntity* = ref object of Entity
-
-  Animation* = ref object of SceneEntity
-    animationObject*: EntityId
-    startTime*: Duration
-    endTime*: Duration
-
-
 
 proc serializeData*[T](data: T, s: var string) =
   when T is int:
@@ -110,6 +98,12 @@ proc serializeData*(data: string, s: var string) =
   if data.len == 0: return
   s.setLen(s.len + data.len)
   copyMem(s[s.len - data.len].addr, data[0].addr, data.len)
+
+
+proc serializeData*[T](data: seq[T], s: var string) =
+  serializeData(data.len.int64, s)
+  for x in data:
+    serializeData(x, s)
 
 
 proc serializeData*[T: pointer|ptr|ref](data: T, s: var string) {.error: "pointer serialization is non-trivial".}
@@ -146,6 +140,16 @@ proc deserializeData*(data: var string, s: string, i: var int) =
   inc i, len
 
 
+proc deserializeData*[T](data: var seq[T], s: string, i: var int) =
+  var len: int64
+  deserializeData(len, s, i)
+
+  data.setLen(len.int)
+
+  for dataI in 0 ..< len:
+    deserializeData(data[dataI], s, i)
+
+
 proc deserializeData*[T: pointer|ptr|ref](data: var T, s: string, i: var int) {.error: "pointer deserialization is non-trivial".}
 
 
@@ -170,11 +174,18 @@ macro registerEntityType*(moduleName: static string, typ: type) =
   CacheSeq("animaui / types to register").incl typ
 
   result.add quote do:
-    method typeName*(this: Entity): tuple[module, name: string] {.raises: [].} =
+    method typeName*(this: `typ`): tuple[module, name: string] {.raises: [].} =
       (`moduleName`, `typName`)
 
 
 proc `==`*(a, b: EntityId): bool {.borrow.}
+
+proc asTyped*[T: Entity](id: EntityId, t: typedesc[T]): EntityIdOf[T] {.inline.} = (EntityIdOf[T])(id)
+proc asUntyped*[T: Entity](id: EntityIdOf[T]): EntityId {.inline.} = (EntityId)(id)
+
+proc asTyped*[T: Entity, TOther: Entity](id: EntityIdOf[TOther], t: typedesc[T]): EntityIdOf[T] {.inline.} = (EntityIdOf[T])(id.EntityId)
+
+proc typedId*[T: Entity](entity: T): EntityIdOf[T] {.inline.} = (EntityIdOf[T])(entity.id)
 
 
 macro addRegistredEntityTypeInfosToDatabase*(db: Database) =
@@ -197,7 +208,7 @@ proc version*(this: type Entity): int {.inline.} = 1
 method serialize*(this: Entity, s: var string): SerializeStatus {.base, animaui_api.} =
   this.typeof.version.serializeData(s)
 
-  this.id.int64.serializeData(s)
+  this.id.serializeData(s)
   this.typeName.module.serializeData(s)
   this.typeName.name.serializeData(s)
 
@@ -218,12 +229,48 @@ method deserialize*(this: Entity, s: string, i: var int): DeserializeStatus {.ba
 
   if id != this.id:
     raise AssertionDefect.newException("unexpected entity id")
-    
+
+
+method onDestroy*(entity: Entity) {.base, animaui_api.} =
+  disconnect entity.changed
+  disconnect entity.destroyed
+
+
+proc cloneUntyped(this: Entity): Entity {.animaui_api.} =
+  assert this != nil
+
+  var s: string
+  discard this.serialize(s)
+  result = this.database.typeRegistry[this.typeName].construct()
+  result.database = this.database
+
+  let zeroId = 0.EntityId
+  copyMem(s[int64.sizeof].addr, zeroId.addr, EntityId.sizeof)
+
+  var i: int
+  doassert result.deserialize(s, i) == sOk
+
+
+proc clone*[T: Entity](this: T): T {.animaui_api.} =
+  bind cloneUntyped
+  T(cloneUntyped(this))
+
+
+proc copyInto*(fromEntity, toEntity: Entity) {.animaui_api.} =
+  doassert fromEntity.typeName == toEntity.typeName
+
+  var s: string
+  discard fromEntity.serialize(s)
+
+  copyMem(s[int64.sizeof].addr, toEntity.id.addr, EntityId.sizeof)
+
+  var i: int
+  doassert toEntity.deserialize(s, i) == sOk
 
 
 # --- Database ---
 
-proc `[]`*(db: Database, id: EntityId): Entity {.animaui_api, raises: [KeyError].} =
+proc `[]`*(db: Database, id: EntityId): Entity #[not nil]# {.animaui_api, raises: [KeyError].} =
   ## get entity by id
   ## if entity does not exist, raises KeyError
   db.entities[id]
@@ -234,18 +281,54 @@ proc `{}`*(db: Database, id: EntityId): Entity {.animaui_api, raises: [].} =
   db.entities.getOrDefault(id, nil)
 
 
+proc `[]`*[T: Entity](db: Database, id: EntityIdOf[T]): T {.animaui_api, raises: [KeyError, ValueError].} =
+  ## get entity by id
+  ## if entity does not exist, raises KeyError
+  ## if entity has different type, raises ValueError
+  var e = db.entities[id.asUntyped]
+  if e of T:
+    T(e)
+  else:
+    raise ValueError.newException("entity has different type")
+
+proc `{}`*[T: Entity](db: Database, id: EntityIdOf[T]): T {.animaui_api, raises: [].} =
+  ## get entity by id
+  ## if entity does not exist or has different type, returns nil
+  var e = db.entities.getOrDefault(id.asUntyped, nil)
+  if e of T:
+    T(e)
+  else:
+    nil
+
+
+proc defragment*(db: Database) {.animaui_api.} =
+  ## todo
+
+
 proc add*(db: Database, entity: Entity) {.animaui_api.} =
+  assert entity != nil
+
+  if entity.id == 0.EntityId:
+    if db.nextUnusedId == EntityId.high:
+      defragment db
+
+    entity.id = db.nextUnusedId
+    inc db.nextUnusedId
+
   var record {.cursor.} = db.entities.mgetOrPut(entity.id, nil)
   if record != nil and record != entity:
     raise AssertionDefect.newException("diffirent entity with the same id already exists in database")
   
   if record == nil:
     record = entity
+    record.database = db
 
     db.entityAdded.emit(entity)
 
 
 proc destroy*(db: Database, entity: Entity) {.animaui_api.} =
+  assert entity != nil
+
   var record: Entity
   if db.entities.pop(entity.id, record):
     if record != entity:
@@ -253,6 +336,7 @@ proc destroy*(db: Database, entity: Entity) {.animaui_api.} =
 
     entity.destroyed.emit(entity)
     db.entityDestroyed.emit(entity)
+    entity.onDestroy()
 
 
 
@@ -310,8 +394,8 @@ proc readEntityShallow(storage: Storage, s: string, res: var Entity) {.raises: [
 
   if res != nil:
     doassert version == res.typeof.version
-    doassert typeName == res.typeName
     doassert id == res.id
+    doassert typeName == res.typeName
 
   else:
     let typeinfo = storage.database.typeRegistry.getOrDefault(typeName)
@@ -320,6 +404,8 @@ proc readEntityShallow(storage: Storage, s: string, res: var Entity) {.raises: [
       return
     
     res = typeinfo.construct()
+
+    res.database = storage.database
 
 
 proc readEntity(storage: Storage, s: string): Entity =
@@ -504,74 +590,4 @@ registerEntityType "animaui/editor/entities", ProxyEntity
 
 method serialize*(this: ProxyEntity, s: var string): SerializeStatus {.animaui_api.} =
   this.data.serializeData(s)
-
-
-
-# --- FrameEntity ---
-
-registerEntityType "animaui/editor/entities", FrameEntity
-
-proc version*(this: type FrameEntity): int {.inline.} = 1
-
-method draw*(this: FrameEntity, ctx: EntityDrawContext) {.base, animaui_api.} =
-  discard
-
-
-method transformBy*(this: FrameEntity, m: Mat4) {.base, animaui_api.} =
-  discard
-
-
-method serialize*(this: FrameEntity, s: var string): SerializeStatus {.animaui_api.} =
-  if (let status = procCall this.super.serialize(s); status != sOk): return status
-  
-  this.typeof.version.serializeData(s)
-  
-  this.ecs.serializeData(s)
-  this.color.serializeData(s)
-
-
-method deserialize*(this: FrameEntity, s: string, i: var int): DeserializeStatus {.animaui_api.} =
-  if (let status = procCall this.super.deserialize(s, i); status != sOk): return status
-  
-  var version: int
-  version.deserializeData(s, i)
-  if version > this.typeof.version: return sGreaterVersion
-  
-  this.ecs.deserializeData(s, i)
-  this.color.deserializeData(s, i)
-
-
-
-# --- SceneEntity ---
-
-registerEntityType "animaui/editor/entities", SceneEntity
-
-
-
-# --- Animation ---
-
-registerEntityType "animaui/editor/entities", Animation
-
-proc version*(this: type Animation): int {.inline.} = 1
-
-method serialize*(this: Animation, s: var string): SerializeStatus {.animaui_api.} =
-  if (let status = procCall this.super.serialize(s); status != sOk): return status
-
-  this.typeof.version.serializeData(s)
-
-  this.animationObject.serializeData(s)
-  this.startTime.serializeData(s)
-  this.endTime.serializeData(s)
-
-
-method deserialize*(this: Animation, s: string, i: var int): DeserializeStatus {.animaui_api.} =
-  if (let status = procCall this.super.deserialize(s, i); status != sOk): return status
-
-  var version: int
-  version.deserializeData(s, i)
-  if version > this.typeof.version: return sGreaterVersion
-
-  this.animationObject.deserializeData(s, i)
-  this.startTime.deserializeData(s, i)
-  this.endTime.deserializeData(s, i)
 

@@ -1,23 +1,60 @@
-import times, os, strutils, strformat
-import sigui/[uibase, animations], imageman, suru
-import ./[keyframes, screenRecording]
+import std/[times, os, strutils, strformat]
+import pkg/[imageman, suru]
+import pkg/sigui/[uibase, animations]
+import ./[keyframes, screenRecording, entities, exportutils]
 
 type
-  SceneObjectKind* = enum
-    none
+  EntityDrawContext* = ref object of RootObj
+    screenCoordinateSystem*: Mat4
+
+  FrameEntityRole* = enum
+    ## for each "frame object" there are two frame entities:
+    ## - initial frame entity is the one that is created by user, it's properties are "by default" for all frames.
+    ## - current frame entity is the one that is draw on each frame and the one that frequently changed by animations.
+    ## `FrameEntity.pair` is initial frame for current and the other way around
+    initial
+    current
+
+  FrameEntity* = ref object of Entity
+    scene*: EntityIdOf[Scene]
+    role*: FrameEntityRole
+    pair*: EntityIdOf[FrameEntity]
+
+    ecs*: Mat4 = mat4(1, 0, 0, 0,  0, 1, 0, 0,  0, 0, 1, 0,  0, 0, 0, 1)
+      ## internal coordinate system (a matrix that transforms a coordinate from internal space to world space)
+    color*: Col
+    opacity*: float32
+
+
+  SceneEntity* = ref object of Entity
+    scene*: EntityIdOf[Scene]
+
+  
+  Scene* = ref object of Entity
+    initialFrameEntities*: seq[EntityIdOf[FrameEntity]]
+    currentFrameEntities*: seq[EntityIdOf[FrameEntity]]
+    sceneEntities*: seq[EntityIdOf[SceneEntity]]
+
+
+  Animation* = ref object of SceneEntity
+    animationObject*: EntityIdOf[FrameEntity]
+    startTime*: Duration
+    endTime*: Duration
+
+
+  SiguiFrameEntityKind* = enum
+    emptyUiobj
     rect
 
-  Scene* = ref object of UiObj
 
+  SiguiFrameEntity* = ref object of FrameEntity
+    kind*: SiguiFrameEntityKind
+    uiObj*: UiObj
+    prop_color*: Property[Col]
+    prop_opacity*: Property[float32]
 
-  SceneObject* = ref object of Uiobj
-    internalObject*: Uiobj
-    kind*: Property[SceneObjectKind]
-    selected*: Property[bool]
-
-    color*: Property[chroma.Color]
-    opacity*: Property[float32]
-
+  
+  KeyframeAnimation* = ref object of Animation
     xKeyframes*: seq[Keyframe[float32]]
     yKeyframes*: seq[Keyframe[float32]]
     wKeyframes*: seq[Keyframe[float32]]
@@ -25,34 +62,283 @@ type
     colorKeyframes*: seq[Keyframe[chroma.Color]]
     opacityKeyframes*: seq[Keyframe[float32]]
 
-registerComponent Scene
-registerComponent SceneObject
+
+  SceneView* = ref object of UiObj
+    ## todo
+    database*: Database
+    scene*: EntityIdOf[Scene]
 
 
-proc setTime*(this: SceneObject, time: Duration) =
+registerComponent SceneView
+
+
+
+# --- FrameEntity ---
+
+registerEntityType "animaui/editor/scene", FrameEntity
+
+proc version*(this: type FrameEntity): int {.inline.} = 1
+
+method draw*(this: FrameEntity, ctx: EntityDrawContext) {.base, animaui_api.} =
+  discard
+
+
+method transformBy*(this: FrameEntity, m: Mat4) {.base, animaui_api.} =
+  discard
+
+
+method serialize*(this: FrameEntity, s: var string): SerializeStatus {.animaui_api.} =
+  if (let status = procCall this.super.serialize(s); status != sOk): return status
+  
+  this.typeof.version.serializeData(s)
+  
+  this.scene.serializeData(s)
+  this.role.serializeData(s)
+  this.pair.serializeData(s)
+  this.ecs.serializeData(s)
+  this.color.serializeData(s)
+  this.opacity.serializeData(s)
+
+
+method deserialize*(this: FrameEntity, s: string, i: var int): DeserializeStatus {.animaui_api.} =
+  if (let status = procCall this.super.deserialize(s, i); status != sOk): return status
+  
+  var version: int
+  version.deserializeData(s, i)
+  if version > this.typeof.version: return sGreaterVersion
+  
+  this.scene.deserializeData(s, i)
+  this.role.deserializeData(s, i)
+  this.pair.deserializeData(s, i)
+  this.ecs.deserializeData(s, i)
+  this.color.deserializeData(s, i)
+  this.opacity.deserializeData(s, i)
+
+
+
+# --- SceneEntity ---
+
+registerEntityType "animaui/editor/scene", SceneEntity
+
+proc version*(this: type SceneEntity): int {.inline.} = 1
+
+
+
+# --- Animation ---
+
+registerEntityType "animaui/editor/scene", Animation
+
+proc version*(this: type Animation): int {.inline.} = 1
+
+method serialize*(this: Animation, s: var string): SerializeStatus {.animaui_api.} =
+  if (let status = procCall this.super.serialize(s); status != sOk): return status
+
+  this.typeof.version.serializeData(s)
+
+  this.animationObject.serializeData(s)
+  this.startTime.serializeData(s)
+  this.endTime.serializeData(s)
+
+
+method deserialize*(this: Animation, s: string, i: var int): DeserializeStatus {.animaui_api.} =
+  if (let status = procCall this.super.deserialize(s, i); status != sOk): return status
+
+  var version: int
+  version.deserializeData(s, i)
+  if version > this.typeof.version: return sGreaterVersion
+
+  this.animationObject.deserializeData(s, i)
+  this.startTime.deserializeData(s, i)
+  this.endTime.deserializeData(s, i)
+
+
+method apply*(this: Animation, time: Duration) {.base, animaui_api.} = discard
+  ## applies animation to `current` pair of animation object
+  ## for implementors: don't emit changed for animation object, scene will do it
+
+
+
+# --- Scene ---
+
+registerEntityType "animaui/editor/scene", Scene
+
+proc version*(this: type Scene): int {.inline.} = 1
+
+method serialize*(this: Scene, s: var string): SerializeStatus {.animaui_api.} =
+  if (let status = procCall this.super.serialize(s); status != sOk): return status
+
+  this.typeof.version.serializeData(s)
+
+  this.initialFrameEntities.serializeData(s)
+  this.currentFrameEntities.serializeData(s)
+  this.sceneEntities.serializeData(s)
+
+
+method deserialize*(this: Scene, s: string, i: var int): DeserializeStatus {.animaui_api.} =
+  if (let status = procCall this.super.deserialize(s, i); status != sOk): return status
+
+  var version: int
+  version.deserializeData(s, i)
+  if version > this.typeof.version: return sGreaterVersion
+
+  this.initialFrameEntities.deserializeData(s, i)
+  this.currentFrameEntities.deserializeData(s, i)
+  this.sceneEntities.deserializeData(s, i)
+
+
+proc add*(this: Scene, entity: SceneEntity) =
+  defer: this.changed.emit(this)
+  this.sceneEntities.add entity.typedId
+
+
+proc add*(this: Scene, entity: FrameEntity) =
+  defer: this.changed.emit(this)
+  doassert entity.role == FrameEntityRole.initial
+
+  this.initialFrameEntities.add entity.typedId
+  
+  let pair = entity.clone
+  this.database.add pair
+
+  pair.role = FrameEntityRole.current
+  
+  pair.pair = entity.typedId
+  entity.pair = pair.typedId
+
+  this.currentFrameEntities.add pair.typedId
+
+
+iterator animations*(this: Scene): Animation =
+  for entity_id in this.sceneEntities:
+    let entity = this.database[entity_id]
+    if entity of Animation:
+      yield Animation(entity)
+
+
+proc `currentTime=`*(this: Scene, time: Duration) =
+  for currentFe_id in this.currentFrameEntities:
+    let currentFe = this.database[currentFe_id]
+    let pair = this.database[currentFe.pair]
+    pair.copyInto(currentFe)
+
+  for animation in this.animations:
+    if time < animation.startTime or time > animation.endTime: continue
+    animation.apply(time)
+
+    let cfe = this.database[this.database[animation.animationObject].pair]
+    cfe.changed.emit(cfe)
+
+
+
+# --- SiguiFrameEntity ---
+
+registerEntityType "animaui/editor/scene", SiguiFrameEntity
+
+proc version*(this: type SiguiFrameEntity): int {.inline.} = 1
+
+method serialize*(this: SiguiFrameEntity, s: var string): SerializeStatus {.animaui_api.} =
+  if (let status = procCall this.super.serialize(s); status != sOk): return status
+
+  this.typeof.version.serializeData(s)
+
+  this.kind.serializeData(s)
+
+  this.uiObj.x[].serializeData(s)
+  this.uiObj.y[].serializeData(s)
+  this.uiObj.w[].serializeData(s)
+  this.uiObj.h[].serializeData(s)
+
+
+method deserialize*(this: SiguiFrameEntity, s: string, i: var int): DeserializeStatus {.animaui_api.} =
+  if (let status = procCall this.super.deserialize(s, i); status != sOk): return status
+
+  var version: int
+  version.deserializeData(s, i)
+  if version > this.typeof.version: return sGreaterVersion
+
+  this.kind.deserializeData(s, i)
+
+  case this.kind
+  of SiguiFrameEntityKind.emptyUiobj:
+    this.uiObj = UiObj()
+  of SiguiFrameEntityKind.rect:
+    this.uiObj = UiRect()
+    this.uiObj.UiRect.binding color: this.prop_color[] * this.prop_opacity[]
+  
+  this.uiObj.initIfNeeded()
+
+  this.uiObj.x{}.deserializeData(s, i)
+  this.uiObj.y{}.deserializeData(s, i)
+  this.uiObj.w{}.deserializeData(s, i)
+  this.uiObj.h{}.deserializeData(s, i)
+
+  this.uiObj.x.changed.emit()
+  this.uiObj.y.changed.emit()
+  this.uiObj.w.changed.emit()
+  this.uiObj.h.changed.emit()
+
+
+method onDestroy*(this: SiguiFrameEntity) {.animaui_api.} =
+  procCall this.super.onDestroy()
+
+  delete this.uiObj
+  disconnect this.prop_color.changed
+  disconnect this.prop_opacity.changed
+
+
+
+# --- KeyframeAnimation ---
+
+registerEntityType "animaui/editor/scene", KeyframeAnimation
+
+proc version*(this: type KeyframeAnimation): int {.inline.} = 1
+
+method serialize*(this: KeyframeAnimation, s: var string): SerializeStatus {.animaui_api.} =
+  if (let status = procCall this.super.serialize(s); status != sOk): return status
+
+  this.typeof.version.serializeData(s)
+
+  this.xKeyframes.serializeData(s)
+  this.yKeyframes.serializeData(s)
+  this.wKeyframes.serializeData(s)
+  this.hKeyframes.serializeData(s)
+  this.colorKeyframes.serializeData(s)
+  this.opacityKeyframes.serializeData(s)
+
+
+method deserialize*(this: KeyframeAnimation, s: string, i: var int): DeserializeStatus {.animaui_api.} =
+  if (let status = procCall this.super.deserialize(s, i); status != sOk): return status
+
+  var version: int
+  version.deserializeData(s, i)
+  if version > this.typeof.version: return sGreaterVersion
+
+  this.xKeyframes.deserializeData(s, i)
+  this.yKeyframes.deserializeData(s, i)
+  this.wKeyframes.deserializeData(s, i)
+  this.hKeyframes.deserializeData(s, i)
+  this.colorKeyframes.deserializeData(s, i)
+  this.opacityKeyframes.deserializeData(s, i)
+
+
+method apply*(this: KeyframeAnimation, time: Duration) {.animaui_api.} =
+  let target = this.database[this.database[this.animationObject].pair.asTyped(SiguiFrameEntity)]
+
   if this.xKeyframes.len != 0:
-    this.x[] = this.xKeyframes.getValueAtTime(time)
+    target.uiObj.x[] = this.xKeyframes.getValueAtTime(time)
   if this.yKeyframes.len != 0:
-    this.y[] = this.yKeyframes.getValueAtTime(time)
+    target.uiObj.y[] = this.yKeyframes.getValueAtTime(time)
   if this.wKeyframes.len != 0:
-    this.w[] = this.wKeyframes.getValueAtTime(time)
+    target.uiObj.w[] = this.wKeyframes.getValueAtTime(time)
   if this.hKeyframes.len != 0:
-    this.h[] = this.hKeyframes.getValueAtTime(time)
+    target.uiObj.h[] = this.hKeyframes.getValueAtTime(time)
   if this.colorKeyframes.len != 0:
-    this.color[] = this.colorKeyframes.getValueAtTime(time)
+    target.prop_color[] = this.colorKeyframes.getValueAtTime(time)
   if this.opacityKeyframes.len != 0:
-    this.opacity[] = this.opacityKeyframes.getValueAtTime(time)
+    target.prop_opacity[] = this.opacityKeyframes.getValueAtTime(time)
 
 
-proc setTime*(this: Scene, time: Duration) =
-  proc rec(this: UiObj) =
-    if this of SceneObject:
-      this.SceneObject.setTime(time)
-    for x in this.childs:
-      rec x
-
-  rec this
-
+#[
 
 proc pxToScene*(xy: Vec2, scene: Scene): Vec2 =
   let ptSize = min(scene.w[], scene.h[]) / 50
@@ -283,3 +569,5 @@ proc render*(scene: Scene, resolution: Vec2, outfile: string, fps: int, fromTime
   discard execShellCmd &"ffmpeg -hide_banner -loglevel panic -r {fps} -f concat -safe 0 -i /tmp/animaui/images.txt -c:v libx264 -pix_fmt yuv420p {outfile}"
 
   removeDir "/tmp/animaui"
+
+]#
