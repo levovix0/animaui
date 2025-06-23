@@ -59,3 +59,12 @@ proc getValueAtTime*[T](keyframes: seq[Keyframe[T]], time: Duration): T =
     return currentKeyframe.value
 
   return interpolate(prevKeyframe.value, currentKeyframe.value, f((time - currentKeyframe.time).inMicroseconds.float / dur.inMicroseconds.float))
+
+
+proc keyframeForTime*[T](keyframes: var seq[Keyframe[T]], time: times.Duration): var Keyframe[T] =
+  for kf in keyframes.mitems:
+    if kf.time.inMilliseconds == time.inMilliseconds:
+      return kf
+  
+  keyframes.add Keyframe[T](time: time)
+  return keyframes[^1]

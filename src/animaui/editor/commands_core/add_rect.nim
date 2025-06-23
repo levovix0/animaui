@@ -1,6 +1,6 @@
 import pkg/[localize, bumpy, vmath, chronos]
 import pkg/sigui/[uibase]
-import ../[commands, editor, scene]
+import ../[commands, editor, scene, entities]
 
 
 proc command_add_rect*(ctx: CommandInvokationContext) {.async: (raises: [Exception]).} =
@@ -18,14 +18,23 @@ proc command_add_rect*(ctx: CommandInvokationContext) {.async: (raises: [Excepti
     r.h = -r.h
   
   {.cast(gcsafe).}:
-    ctx.scene.makeLayout:
-      - SceneObject() as o:
-        this.kind[] = rect
-        this.color[] = "fff"
-        this.opacity[] = 1
+    let obj = SiguiEntity()
+    obj.pos = r.xy
+    obj.size = r.wh
+    obj.setKind(rect)
 
-        this.x[] = r.x
-        this.y[] = r.y
-        this.w[] = r.w
-        this.h[] = r.h
+    obj.scene = ctx.editor.currentScene.typedId
+
+    ctx.database.add obj
+    ctx.editor.currentScene.initialFrameEntities.add obj.FrameEntity.typedId
+    
+    let pair = obj.clone.FrameEntity
+    pair.role = FrameEntityRole.current
+    pair.scene = ctx.editor.currentScene.typedId
+
+    pair.pair = obj.FrameEntity.typedId
+    obj.pair = pair.typedId
+
+    ctx.database.add pair
+    ctx.editor.currentScene.currentFrameEntities.add pair.typedId
 

@@ -36,7 +36,7 @@ proc newButton*(icon: string): Button =
       this.mouseDownAndUpInside.connectTo root:
         root.action()
 
-    - UiImage() as ico:
+    - UiImage.new as ico:
       colorOverlay = true
       image = icon.decodeImage
       this.centerIn parent
@@ -62,11 +62,11 @@ method init*(this: WindowHeader) =
   this.makeLayout:
     color = c"30"
 
-    - MouseArea():
+    - MouseArea.new:
       this.fill parent
 
-      this.grabbed.connectTo root:
-        root.parentWindow.startInteractiveMove(some e)
+      on this.grabbed[] == true:
+        root.parentWindow.startInteractiveMove(some this.pressWindowPos)
       
       this.clicked.connectTo root:
         if e.double:

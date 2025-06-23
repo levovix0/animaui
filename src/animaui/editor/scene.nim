@@ -5,7 +5,11 @@ import ./[keyframes, screenRecording, entities, exportutils]
 
 type
   EntityDrawContext* = ref object of RootObj
-    screenCoordinateSystem*: Mat4
+    database*: Database
+    scene*: Scene
+    sceneView*: SceneView
+    siguiCtx*: uibase.DrawContext
+
 
   FrameEntityRole* = enum
     ## for each "frame object" there are two frame entities:
@@ -19,11 +23,11 @@ type
     scene*: EntityIdOf[Scene]
     role*: FrameEntityRole
     pair*: EntityIdOf[FrameEntity]
+  
 
-    ecs*: Mat4 = mat4(1, 0, 0, 0,  0, 1, 0, 0,  0, 0, 1, 0,  0, 0, 0, 1)
-      ## internal coordinate system (a matrix that transforms a coordinate from internal space to world space)
-    color*: Col
-    opacity*: float32
+  BoxEntity* = ref object of FrameEntity
+    pos*: Vec2
+    size*: Vec2
 
 
   SceneEntity* = ref object of Entity
@@ -42,29 +46,40 @@ type
     endTime*: Duration
 
 
-  SiguiFrameEntityKind* = enum
+  SiguiEntityKind* = enum
     emptyUiobj
     rect
 
 
-  SiguiFrameEntity* = ref object of FrameEntity
-    kind*: SiguiFrameEntityKind
+  SiguiEntity* = ref object of BoxEntity
+    kind*: SiguiEntityKind
     uiObj*: UiObj
-    prop_color*: Property[Col]
-    prop_opacity*: Property[float32]
+    bindings*: EventHandler
+    
+    color*: Col
+    opacity*: float32
+  
+
+  FloatKeyframePropertyKind* = enum
+    x, y, w, h
+    opacity
+
+
+  ColorKeyframePropertyKind* = enum
+    color
+
+
+  Keyframes*[T, Enum] = object
+    kind: Enum
+    keyframes: seq[Keyframe[T]]
 
   
   KeyframeAnimation* = ref object of Animation
-    xKeyframes*: seq[Keyframe[float32]]
-    yKeyframes*: seq[Keyframe[float32]]
-    wKeyframes*: seq[Keyframe[float32]]
-    hKeyframes*: seq[Keyframe[float32]]
-    colorKeyframes*: seq[Keyframe[chroma.Color]]
-    opacityKeyframes*: seq[Keyframe[float32]]
+    floatKeyframes: seq[Keyframes[float32, FloatKeyframePropertyKind]]
+    colorKeyframes: seq[Keyframes[chroma.Color, ColorKeyframePropertyKind]]
 
 
   SceneView* = ref object of UiObj
-    ## todo
     database*: Database
     scene*: EntityIdOf[Scene]
 
@@ -95,9 +110,6 @@ method serialize*(this: FrameEntity, s: var string): SerializeStatus {.animaui_a
   this.scene.serializeData(s)
   this.role.serializeData(s)
   this.pair.serializeData(s)
-  this.ecs.serializeData(s)
-  this.color.serializeData(s)
-  this.opacity.serializeData(s)
 
 
 method deserialize*(this: FrameEntity, s: string, i: var int): DeserializeStatus {.animaui_api.} =
@@ -110,9 +122,6 @@ method deserialize*(this: FrameEntity, s: string, i: var int): DeserializeStatus
   this.scene.deserializeData(s, i)
   this.role.deserializeData(s, i)
   this.pair.deserializeData(s, i)
-  this.ecs.deserializeData(s, i)
-  this.color.deserializeData(s, i)
-  this.opacity.deserializeData(s, i)
 
 
 
@@ -230,26 +239,81 @@ proc `currentTime=`*(this: Scene, time: Duration) =
 
 
 
-# --- SiguiFrameEntity ---
+# --- BoxEntity ---
 
-registerEntityType "animaui/editor/scene", SiguiFrameEntity
+registerEntityType "animaui/editor/scene", BoxEntity
 
-proc version*(this: type SiguiFrameEntity): int {.inline.} = 1
+proc version*(this: type BoxEntity): int {.inline.} = 1
 
-method serialize*(this: SiguiFrameEntity, s: var string): SerializeStatus {.animaui_api.} =
+method serialize*(this: BoxEntity, s: var string): SerializeStatus {.animaui_api.} =
+  if (let status = procCall this.super.serialize(s); status != sOk): return status
+
+  this.typeof.version.serializeData(s)
+
+  this.pos.serializeData(s)
+  this.size.serializeData(s)
+
+
+method deserialize*(this: BoxEntity, s: string, i: var int): DeserializeStatus {.animaui_api.} =
+  if (let status = procCall this.super.deserialize(s, i); status != sOk): return status
+
+  var version: int
+  version.deserializeData(s, i)
+  if version > this.typeof.version: return sGreaterVersion
+
+  this.pos.deserializeData(s, i)
+  this.size.deserializeData(s, i)
+
+
+
+# --- SiguiEntity ---
+
+registerEntityType "animaui/editor/scene", SiguiEntity
+
+proc version*(this: type SiguiEntity): int {.inline.} = 1
+
+method serialize*(this: SiguiEntity, s: var string): SerializeStatus {.animaui_api.} =
   if (let status = procCall this.super.serialize(s); status != sOk): return status
 
   this.typeof.version.serializeData(s)
 
   this.kind.serializeData(s)
 
-  this.uiObj.x[].serializeData(s)
-  this.uiObj.y[].serializeData(s)
-  this.uiObj.w[].serializeData(s)
-  this.uiObj.h[].serializeData(s)
+
+proc setKind*(this: SiguiEntity, kind: SiguiEntityKind) =
+  disconnect this.bindings
+  delete this.uiObj
+
+  this.kind = kind
+
+  case this.kind
+  of SiguiEntityKind.emptyUiobj:
+    this.uiObj = UiObj()
+  of SiguiEntityKind.rect:
+    this.uiObj = UiRect()
+  
+  this.uiObj.initIfNeeded()
+
+  proc updateUiObj(this: Entity) =
+    let this = SiguiEntity(this)
+
+    this.uiObj.x[] = this.pos.x
+    this.uiObj.y[] = this.pos.y
+    this.uiObj.w[] = this.size.x
+    this.uiObj.h[] = this.size.y
+    
+    case this.kind
+    of SiguiEntityKind.emptyUiobj:
+      discard
+    of SiguiEntityKind.rect:
+      this.uiObj.UiRect.color[] = this.color * this.opacity
+  
+  updateUiObj(this)
+  this.changed.connect this.bindings, updateUiObj
 
 
-method deserialize*(this: SiguiFrameEntity, s: string, i: var int): DeserializeStatus {.animaui_api.} =
+
+method deserialize*(this: SiguiEntity, s: string, i: var int): DeserializeStatus {.animaui_api.} =
   if (let status = procCall this.super.deserialize(s, i); status != sOk): return status
 
   var version: int
@@ -257,33 +321,19 @@ method deserialize*(this: SiguiFrameEntity, s: string, i: var int): DeserializeS
   if version > this.typeof.version: return sGreaterVersion
 
   this.kind.deserializeData(s, i)
-
-  case this.kind
-  of SiguiFrameEntityKind.emptyUiobj:
-    this.uiObj = UiObj()
-  of SiguiFrameEntityKind.rect:
-    this.uiObj = UiRect()
-    this.uiObj.UiRect.binding color: this.prop_color[] * this.prop_opacity[]
-  
-  this.uiObj.initIfNeeded()
-
-  this.uiObj.x{}.deserializeData(s, i)
-  this.uiObj.y{}.deserializeData(s, i)
-  this.uiObj.w{}.deserializeData(s, i)
-  this.uiObj.h{}.deserializeData(s, i)
-
-  this.uiObj.x.changed.emit()
-  this.uiObj.y.changed.emit()
-  this.uiObj.w.changed.emit()
-  this.uiObj.h.changed.emit()
+  {.cast(gcsafe).}:
+    this.setKind(this.kind)
 
 
-method onDestroy*(this: SiguiFrameEntity) {.animaui_api.} =
+method onDestroy*(this: SiguiEntity) {.animaui_api.} =
   procCall this.super.onDestroy()
 
+  disconnect this.bindings
   delete this.uiObj
-  disconnect this.prop_color.changed
-  disconnect this.prop_opacity.changed
+
+
+method draw*(this: SiguiEntity, ctx: EntityDrawContext) {.animaui_api.} =
+  this.uiObj.draw(ctx.siguiCtx)
 
 
 
@@ -298,12 +348,8 @@ method serialize*(this: KeyframeAnimation, s: var string): SerializeStatus {.ani
 
   this.typeof.version.serializeData(s)
 
-  this.xKeyframes.serializeData(s)
-  this.yKeyframes.serializeData(s)
-  this.wKeyframes.serializeData(s)
-  this.hKeyframes.serializeData(s)
+  this.floatKeyframes.serializeData(s)
   this.colorKeyframes.serializeData(s)
-  this.opacityKeyframes.serializeData(s)
 
 
 method deserialize*(this: KeyframeAnimation, s: string, i: var int): DeserializeStatus {.animaui_api.} =
@@ -313,132 +359,64 @@ method deserialize*(this: KeyframeAnimation, s: string, i: var int): Deserialize
   version.deserializeData(s, i)
   if version > this.typeof.version: return sGreaterVersion
 
-  this.xKeyframes.deserializeData(s, i)
-  this.yKeyframes.deserializeData(s, i)
-  this.wKeyframes.deserializeData(s, i)
-  this.hKeyframes.deserializeData(s, i)
+  this.floatKeyframes.deserializeData(s, i)
   this.colorKeyframes.deserializeData(s, i)
-  this.opacityKeyframes.deserializeData(s, i)
 
 
 method apply*(this: KeyframeAnimation, time: Duration) {.animaui_api.} =
-  let target = this.database[this.database[this.animationObject].pair.asTyped(SiguiFrameEntity)]
+  let target = this.database[this.database[this.animationObject].pair.asTyped(SiguiEntity)]
+  var hadChanges = false
 
-  if this.xKeyframes.len != 0:
-    target.uiObj.x[] = this.xKeyframes.getValueAtTime(time)
-  if this.yKeyframes.len != 0:
-    target.uiObj.y[] = this.yKeyframes.getValueAtTime(time)
-  if this.wKeyframes.len != 0:
-    target.uiObj.w[] = this.wKeyframes.getValueAtTime(time)
-  if this.hKeyframes.len != 0:
-    target.uiObj.h[] = this.hKeyframes.getValueAtTime(time)
-  if this.colorKeyframes.len != 0:
-    target.prop_color[] = this.colorKeyframes.getValueAtTime(time)
-  if this.opacityKeyframes.len != 0:
-    target.prop_opacity[] = this.opacityKeyframes.getValueAtTime(time)
+  for kf in this.floatKeyframes:
+    if kf.keyframes.len != 0:
+      hadChanges = true
+      case kf.kind
+      of x: target.pos.x = kf.keyframes.getValueAtTime(time)
+      of y: target.pos.y = kf.keyframes.getValueAtTime(time)
+      of w: target.size.x = kf.keyframes.getValueAtTime(time)
+      of h: target.size.y = kf.keyframes.getValueAtTime(time)
+      of opacity: target.opacity = kf.keyframes.getValueAtTime(time)
+
+  for kf in this.colorKeyframes:
+    if kf.keyframes.len != 0:
+      hadChanges = true
+      case kf.kind
+      of color: target.color = kf.keyframes.getValueAtTime(time)
+
+  if hadChanges:
+    target.changed.emit(target)
 
 
-#[
 
-proc pxToScene*(xy: Vec2, scene: Scene): Vec2 =
+proc sceneToPx*(xy: Vec2, scene: SceneView): Vec2 =
+  let ptSize = min(scene.w[], scene.h[]) / 50
+  return xy * ptSize
+
+proc pxToScene*(xy: Vec2, scene: SceneView): Vec2 =
   let ptSize = min(scene.w[], scene.h[]) / 50
   return xy / ptSize
 
 
-method init*(this: SceneObject) =
-  procCall this.super.init()
-
-  proc parentScene(this: SceneObject): Scene =
-    var x = this.parent
-    while x != nil:
-      if x of Scene: return Scene(x)
-      x = x.parent
-
-  proc queryRect(this: SceneObject): bumpy.Rect =
-    let scene = this.parentScene
-    if scene == nil: return
-    let ptSize = min(scene.w[], scene.h[]) / 50
-    result.xy = vec2(this.x[], this.y[]).posToGlobal(this.parent).posToLocal(scene) * ptSize
-    result.wh = vec2(this.w[], this.h[]) * ptSize
-
-
-  this.kind.changed.connectTo this:
-    if this.kind[] == none:
-      this.internalObject = nil
-      return
-
-    let internalObjectKind =
-      if this.internalObject == nil: SceneObjectKind.none
-      elif this.internalObject of UiRect: SceneObjectKind.rect
-      else: SceneObjectKind.none
-
-    if internalObjectKind == this.kind[]: return
-
-    this.internalObject = case this.kind[]
-      of none: nil.UiObj
-      of rect: UiRect()
-    
-    this.internalObject.parent = this.parentScene
-    init this.internalObject
-    
-    case this.kind[]
-    of rect:
-      this.internalObject.UiRect.color[] = color(this.color[].r, this.color[].g, this.color[].b, this.opacity[])
-    else: discard
-  
-  this.x.changed.connectTo this, x:
-    let r = this.queryRect
-    if this.internalObject != nil: this.internalObject.x[] = r.x
-  this.y.changed.connectTo this, y:
-    let r = this.queryRect
-    if this.internalObject != nil: this.internalObject.y[] = r.y
-
-  this.parentScene.w.changed.connectTo this, w:
-    let r = this.queryRect
-    if this.internalObject != nil:
-      this.internalObject.xy = r.xy
-      this.internalObject.wh = r.wh
-  this.parentScene.h.changed.connectTo this, h:
-    let r = this.queryRect
-    if this.internalObject != nil:
-      this.internalObject.xy = r.xy
-      this.internalObject.wh = r.wh
-
-  this.w.changed.connectTo this, w:
-    let r = this.queryRect
-    if this.internalObject != nil: this.internalObject.w[] = r.w
-  this.h.changed.connectTo this, h:
-    let r = this.queryRect
-    if this.internalObject != nil: this.internalObject.h[] = r.h
-
-  this.color.changed.connectTo this, color:
-    if this.internalObject != nil:
-      case this.kind[]
-      of rect:
-        this.internalObject.UiRect.color[] = color(this.color[].r, this.color[].g, this.color[].b, this.opacity[])
-      else: discard
-
-  this.opacity.changed.connectTo this, opacity:
-    if this.internalObject != nil:
-      case this.kind[]
-      of rect:
-        this.internalObject.UiRect.color[] = color(this.color[].r, this.color[].g, this.color[].b, this.opacity[])
-      else: discard
-
-
-method draw*(this: SceneObject, ctx: DrawContext) =
+method draw*(this: SceneView, ctx: DrawContext) =
   this.drawBefore(ctx)
+  
   if this.visibility[] == visible:
-    draw(this.internalObject, ctx)
+    let scene = this.database[this.scene]
+
+    let animauiCtx = EntityDrawContext(
+      database: this.database,
+      scene: scene,
+      sceneView: this,
+      siguiCtx: ctx
+    )
+    
+    for cfe in scene.currentFrameEntities:
+      this.database[cfe].draw(animauiCtx)
+  
   this.drawAfter(ctx)
 
 
-method recieve*(this: SceneObject, signal: Signal) =
-  if this.internalObject != nil:
-    this.internalObject.recieve(signal)
-
-
-proc render*(scene: Scene, resolution: Vec2, outfile: string, fps: int, fromTime, toTime: Duration) =
+proc render*(scene: SceneView, resolution: Vec2, outfile: string, fps: int, fromTime, toTime: Duration) =
   let prevParent = scene.parent
   let prevXy = scene.xy
   let prevWh = scene.wh
@@ -536,7 +514,7 @@ proc render*(scene: Scene, resolution: Vec2, outfile: string, fps: int, fromTime
     if frame mod 8 == 0:  ## todo: make better
       echo time
 
-    scene.setTime(time)
+    scene.database[scene.scene].currentTime = time
     
     renderarea.draw(prevParent.parentUiWindow.ctx)
 
@@ -570,4 +548,3 @@ proc render*(scene: Scene, resolution: Vec2, outfile: string, fps: int, fromTime
 
   removeDir "/tmp/animaui"
 
-]#

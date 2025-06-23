@@ -62,9 +62,9 @@ proc useFont*(name: string): Typeface =
 
 let win =
   when defined(preview):
-    newOpenglWindow(size = ivec2(width, height)).newUiWindow
+    newSiwinGlobals().newOpenglWindow(size = ivec2(width, height)).newUiWindow
   else:
-    newOpenglContext().newUiWindow
+    newSiwinGlobals().newOpenglContext().newUiWindow
 
 
 var this* = ClipRect()

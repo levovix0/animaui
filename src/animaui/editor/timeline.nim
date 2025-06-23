@@ -1,5 +1,5 @@
 import std/[times, sequtils, strutils]
-import sigui/[uibase, mouseArea, globalShortcut, dolars], siwin
+import sigui/[uibase, mouseArea, globalShortcut], siwin
 import ../[utils]
 import ./[fonts, keyframes]
 
@@ -37,7 +37,7 @@ method init*(this: TimelinePanel) =
     color = "303030"
 
 
-    this.actionsView --- Uiobj():
+    this.actionsView --- Uiobj.new:
       <--- UiObj(): this.actions[]
 
       this.fillHorizontal parent
@@ -45,7 +45,7 @@ method init*(this: TimelinePanel) =
       bottom = parent.bottom - 20
 
       for x in root.actions:
-        - UiRect():
+        - UiRect.new:
           w = 1
           h = 2
           this.binding x: (x.time.inMicroseconds() / 1_000_000) * (pixelsUntilText[] / timeScale[]) + startFromPixel[]
@@ -53,7 +53,7 @@ method init*(this: TimelinePanel) =
           color = "8f8"
 
 
-    this.opacityActionsView --- Uiobj():
+    this.opacityActionsView --- Uiobj.new:
       <--- UiObj(): this.opacityActions[]
 
       this.fillHorizontal parent
@@ -62,7 +62,7 @@ method init*(this: TimelinePanel) =
       bottom = parent.bottom - 16
 
       for x in root.opacityActions:
-        - UiRect():
+        - UiRect.new:
           w = 1
           h = 2
           this.binding x: (x.time.inMicroseconds() / 1_000_000) * (pixelsUntilText[] / timeScale[]) + startFromPixel[]
@@ -70,7 +70,7 @@ method init*(this: TimelinePanel) =
           color = "888"
 
 
-    - UiRect():
+    - UiRect.new:
       this.fillVertical parent
       w := parent.w[]
       x := (startFromPixel[] - this.w[] + root.startTime[].timeToPx).max(-this.w[]).min(0)
@@ -78,14 +78,14 @@ method init*(this: TimelinePanel) =
       color = "282828"
 
 
-    - UiRect():
+    - UiRect.new:
       this.fillVertical parent
       w := parent.w[]
       x := (startFromPixel[] + root.endTime[].timeToPx).max(0).min(parent.w[])
       color = "282828"
 
 
-    - UiRect() as mouseCacert:
+    - UiRect.new as mouseCacert:
       this.fillVertical parent
       w = 1
       this.binding visibility:
@@ -125,15 +125,15 @@ method init*(this: TimelinePanel) =
         if mouse.pressed[]: updateX()
     
 
-    - UiRect() as cacert:
+    - UiRect.new as cacert:
       this.fillVertical parent
       w = 1
       this.binding x: (root.currentTime[].inMicroseconds() / 1_000_000) * (pixelsUntilText[] / timeScale[]) + startFromPixel[]
       color = "aaa"
 
 
-    root.texts --- UiObj():
-      <--- UiObj(): timeScale[]; pixelsUntilText[]; this.w[]; startFromPixel[]
+    root.texts --- UiObj.new:
+      <--- UiObj.new: timeScale[]; pixelsUntilText[]; this.w[]; startFromPixel[]
       # todo: CycledElement
 
       this.top = parent.top + 10
@@ -146,7 +146,7 @@ method init*(this: TimelinePanel) =
       for i in 0..(count+1):
         let time = (-(startFromPixel[] / pixelsUntilText[]).int + i).float * timeScale[]
 
-        - UiText():
+        - UiText.new:
           centerY = parent.center
           font = (fonts.firaCode)(10)
           let timef = time.round(2)
@@ -155,7 +155,7 @@ method init*(this: TimelinePanel) =
           this.centerX = parent.left + (i.float * pixelsUntilText[])
           x = (i.float * pixelsUntilText[]) - this.w[] / 2
 
-          - UiRect():
+          - UiRect.new:
             drawLayer = before mouseCacert
             left = parent.center
             top = root.top
@@ -167,7 +167,7 @@ method init*(this: TimelinePanel) =
             color = "777"
 
 
-    - MouseArea() as rmouse:
+    - MouseArea.new as rmouse:
       this.fill parent
       acceptedButtons = {MouseButton.right}
       var oldX = 0'f32
@@ -177,7 +177,7 @@ method init*(this: TimelinePanel) =
         oldX = this.mouseX[]
 
 
-    - MouseArea() as mouse:
+    - MouseArea.new as mouse:
       this.fill parent
       acceptedButtons = {MouseButton.left}
 

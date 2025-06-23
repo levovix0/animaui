@@ -32,6 +32,7 @@ type
   
   Editor* = ref object of RootObj
     currentScene*: Scene
+    currentSceneView*: SceneView
 
     startedRequest*: Event[EditorRequest]
     finishedRequest*: Event[EditorRequest]
@@ -128,14 +129,14 @@ method on_mouseButton*(editor: Editor, event: MouseButtonEvent) {.base.} =
       break accept_pending_point_requests
 
     if event.button == MouseButton.left and not event.pressed:
-      let scene_local_pos = event.window.mouse.pos.posToLocal(editor.currentScene)
+      let scene_local_pos = event.window.mouse.pos.posToLocal(editor.currentSceneView)
       if (
-        scene_local_pos.x notin 0'f32..editor.currentScene.w[] or
-        scene_local_pos.y notin 0'f32..editor.currentScene.h[]
+        scene_local_pos.x notin 0'f32..editor.currentSceneView.w[] or
+        scene_local_pos.y notin 0'f32..editor.currentSceneView.h[]
       ):
         break accept_pending_point_requests
 
-      let pos = scene_local_pos.pxToScene(editor.currentScene)
+      let pos = scene_local_pos.pxToScene(editor.currentSceneView)
 
       editor.pendingRequests[0].point_future.complete(
         EditorRequestResult[Vec3](status: ok, value: vec3(pos.x, pos.y, 0))

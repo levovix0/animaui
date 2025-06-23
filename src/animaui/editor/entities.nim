@@ -26,7 +26,7 @@ type
 
   TypeInfo* = object
     typeName*: tuple[module, name: string]
-    construct*: proc(): Entity {.cdecl, raises: [].}
+    construct*: proc(): Entity {.cdecl, gcsafe, raises: [].}
 
 
   Database* = ref object
@@ -171,7 +171,7 @@ macro registerEntityType*(moduleName: static string, typ: type) =
 
   let typName = typ.repr
 
-  CacheSeq("animaui / types to register").incl typ
+  CacheSeq("animaui / types to register").incl nnkBracket.newTree(newLit moduleName, typ)
 
   result.add quote do:
     method typeName*(this: `typ`): tuple[module, name: string] {.raises: [].} =
@@ -179,6 +179,7 @@ macro registerEntityType*(moduleName: static string, typ: type) =
 
 
 proc `==`*(a, b: EntityId): bool {.borrow.}
+template `==`*[T](a, b: EntityIdOf[T]): bool = (EntityId)(a) == (EntityId)(b)
 
 proc asTyped*[T: Entity](id: EntityId, t: typedesc[T]): EntityIdOf[T] {.inline.} = (EntityIdOf[T])(id)
 proc asUntyped*[T: Entity](id: EntityIdOf[T]): EntityId {.inline.} = (EntityId)(id)
@@ -191,21 +192,23 @@ proc typedId*[T: Entity](entity: T): EntityIdOf[T] {.inline.} = (EntityIdOf[T])(
 macro addRegistredEntityTypeInfosToDatabase*(db: Database) =
   result = newStmtList()
   for typ in CacheSeq("animaui / types to register"):
-    let typName = typ.repr
+    let typModule = typ[0]
+    let typName = newLit typ[1].repr
+    let typT = typ[1]
     
     result.add quote do:
-      db.typeRegistry[`typName`] = TypeInfo(
-        name: `typName`,
-        construct: proc(): Entity {.cdecl, raises: [].} = `typ`(),
+      `db`.typeRegistry[(`typModule`, `typName`)] = TypeInfo(
+        typeName: (`typModule`, `typName`),
+        construct: proc(): Entity {.cdecl, raises: [].} = `typT`(),
       )
 
 
 
-method typeName*(this: Entity): tuple[module, name: string] {.base, raises: [].} = ("animaui/editor/entities", "Entity")
+method typeName*(this: Entity): tuple[module, name: string] {.base, gcsafe, raises: [].} = ("animaui/editor/entities", "Entity")
 
 proc version*(this: type Entity): int {.inline.} = 1
 
-method serialize*(this: Entity, s: var string): SerializeStatus {.base, animaui_api.} =
+method serialize*(this: Entity, s: var string): SerializeStatus {.base, gcsafe, animaui_api.} =
   this.typeof.version.serializeData(s)
 
   this.id.serializeData(s)
@@ -213,7 +216,7 @@ method serialize*(this: Entity, s: var string): SerializeStatus {.base, animaui_
   this.typeName.name.serializeData(s)
 
 
-method deserialize*(this: Entity, s: string, i: var int): DeserializeStatus {.base, animaui_api.} =
+method deserialize*(this: Entity, s: string, i: var int): DeserializeStatus {.base, gcsafe, animaui_api.} =
   var
     version: int
     id: EntityId
@@ -323,7 +326,8 @@ proc add*(db: Database, entity: Entity) {.animaui_api.} =
     record = entity
     record.database = db
 
-    db.entityAdded.emit(entity)
+    {.cast(gcsafe).}:
+      db.entityAdded.emit(entity)
 
 
 proc destroy*(db: Database, entity: Entity) {.animaui_api.} =
