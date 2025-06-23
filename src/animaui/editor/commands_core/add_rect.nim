@@ -24,17 +24,7 @@ proc command_add_rect*(ctx: CommandInvokationContext) {.async: (raises: [Excepti
     obj.setKind(rect)
 
     obj.scene = ctx.editor.currentScene.typedId
-
-    ctx.database.add obj
-    ctx.editor.currentScene.initialFrameEntities.add obj.FrameEntity.typedId
     
-    let pair = obj.clone.FrameEntity
-    pair.role = FrameEntityRole.current
-    pair.scene = ctx.editor.currentScene.typedId
-
-    pair.pair = obj.FrameEntity.typedId
-    obj.pair = pair.typedId
-
-    ctx.database.add pair
-    ctx.editor.currentScene.currentFrameEntities.add pair.typedId
+    ctx.database.add obj
+    ctx.database[obj.scene].add obj
 

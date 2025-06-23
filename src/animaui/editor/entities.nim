@@ -37,7 +37,7 @@ type
 
     typeRegistry*: Table[tuple[module, name: string], TypeInfo]
 
-    nextUnusedId*: EntityId
+    nextUnusedId*: EntityId = 1.EntityId
   
 
   UndoState* = object
@@ -189,6 +189,13 @@ proc asTyped*[T: Entity, TOther: Entity](id: EntityIdOf[TOther], t: typedesc[T])
 proc typedId*[T: Entity](entity: T): EntityIdOf[T] {.inline.} = (EntityIdOf[T])(entity.id)
 
 
+proc `$`*(entityId: EntityId): string =
+  "EntityId " & $entityId.int64
+
+proc `$`*[T](entityId: EntityIdOf[T]): string =
+  "EntityIdOf[" & $T & "] " & $entityId.int64
+
+
 macro addRegistredEntityTypeInfosToDatabase*(db: Database) =
   result = newStmtList()
   for typ in CacheSeq("animaui / types to register"):
@@ -209,9 +216,9 @@ method typeName*(this: Entity): tuple[module, name: string] {.base, gcsafe, rais
 proc version*(this: type Entity): int {.inline.} = 1
 
 method serialize*(this: Entity, s: var string): SerializeStatus {.base, gcsafe, animaui_api.} =
-  this.typeof.version.serializeData(s)
-
   this.id.serializeData(s)
+
+  this.typeof.version.serializeData(s)
   this.typeName.module.serializeData(s)
   this.typeName.name.serializeData(s)
 
@@ -222,8 +229,8 @@ method deserialize*(this: Entity, s: string, i: var int): DeserializeStatus {.ba
     id: EntityId
     typeName: tuple[module, name: string]
   
-  version.deserializeData(s, i)
   id.deserializeData(s, i)
+  version.deserializeData(s, i)
   typeName.module.deserializeData(s, i)
   typeName.name.deserializeData(s, i)
 
@@ -248,13 +255,13 @@ proc cloneUntyped(this: Entity): Entity {.animaui_api.} =
   result.database = this.database
 
   let zeroId = 0.EntityId
-  copyMem(s[int64.sizeof].addr, zeroId.addr, EntityId.sizeof)
+  copyMem(s[0].addr, zeroId.addr, EntityId.sizeof)
 
   var i: int
   doassert result.deserialize(s, i) == sOk
 
 
-proc clone*[T: Entity](this: T): T {.animaui_api.} =
+proc clone*[T: Entity](this: T): T =
   bind cloneUntyped
   T(cloneUntyped(this))
 
@@ -265,7 +272,7 @@ proc copyInto*(fromEntity, toEntity: Entity) {.animaui_api.} =
   var s: string
   discard fromEntity.serialize(s)
 
-  copyMem(s[int64.sizeof].addr, toEntity.id.addr, EntityId.sizeof)
+  copyMem(s[0].addr, toEntity.id.addr, EntityId.sizeof)
 
   var i: int
   doassert toEntity.deserialize(s, i) == sOk
@@ -284,7 +291,7 @@ proc `{}`*(db: Database, id: EntityId): Entity {.animaui_api, raises: [].} =
   db.entities.getOrDefault(id, nil)
 
 
-proc `[]`*[T: Entity](db: Database, id: EntityIdOf[T]): T {.animaui_api, raises: [KeyError, ValueError].} =
+proc `[]`*[T: Entity](db: Database, id: EntityIdOf[T]): T {.raises: [KeyError, ValueError].} =
   ## get entity by id
   ## if entity does not exist, raises KeyError
   ## if entity has different type, raises ValueError
@@ -292,9 +299,9 @@ proc `[]`*[T: Entity](db: Database, id: EntityIdOf[T]): T {.animaui_api, raises:
   if e of T:
     T(e)
   else:
-    raise ValueError.newException("entity has different type")
+    raise ValueError.newException("entity has different type, expected " & $T & ", got " & $e.typeName)
 
-proc `{}`*[T: Entity](db: Database, id: EntityIdOf[T]): T {.animaui_api, raises: [].} =
+proc `{}`*[T: Entity](db: Database, id: EntityIdOf[T]): T {.raises: [].} =
   ## get entity by id
   ## if entity does not exist or has different type, returns nil
   var e = db.entities.getOrDefault(id.asUntyped, nil)
@@ -318,13 +325,13 @@ proc add*(db: Database, entity: Entity) {.animaui_api.} =
     entity.id = db.nextUnusedId
     inc db.nextUnusedId
 
-  var record {.cursor.} = db.entities.mgetOrPut(entity.id, nil)
-  if record != nil and record != entity:
+  var record: ptr Entity = db.entities.mgetOrPut(entity.id, nil).addr
+  if record[] != nil and record[] != entity:
     raise AssertionDefect.newException("diffirent entity with the same id already exists in database")
   
-  if record == nil:
-    record = entity
-    record.database = db
+  if record[] == nil:
+    record[] = entity
+    record[].database = db
 
     {.cast(gcsafe).}:
       db.entityAdded.emit(entity)

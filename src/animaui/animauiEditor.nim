@@ -5,7 +5,7 @@ import window, windowHeader
 import editor/[fonts, timeline, toolbar, keyframes, scene, editor, commands, commands_core, entities]
 import editor/commands_core/[add_rect]
 
-requireLocalesToBeTranslated ("ru", "")
+# requireLocalesToBeTranslated ("ru", "")
 
 type
   ButtonKind* = enum
@@ -37,7 +37,7 @@ method init(this: Button) =
         elif mouse.hovered[]: Color "628fff"
         else: Color "557DFF"
     
-    - UiText():
+    - UiText.new:
       parent.binding w: this.w[] + 20
       parent.binding h: this.h[] + 10
       this.font[] = fonts.notoSans.withSize(14)
@@ -50,9 +50,10 @@ method init(this: Button) =
         set: proc(s: string) = this.text[] = s
       )
     
-    - MouseArea() as mouse:
+    - MouseArea.new as mouse:
       this.fill parent
       this.mouseDownAndUpInside.connectTo this: root.clicked.emit()
+
 
 proc animaui =
   logging.addHandler newConsoleLogger(fmtStr = "[$date at $time]:$levelname ")
@@ -77,6 +78,9 @@ proc animaui =
     var currentCommand: Option[CurrentCommand]
     let editor = Editor(currentSceneView: scene)
     let database = Database.new
+    let firstScene = Scene.new
+    database.add firstScene
+    
     addRegistredEntityTypeInfosToDatabase(database)
 
     editor.currentScene = Scene.new
@@ -148,7 +152,7 @@ proc animaui =
         cancelCurrentCommand()
 
 
-    - UiRect() as scenearea:
+    - UiRect.new as scenearea:
       this.fill parent
       this.color[] = "101010"
 
@@ -157,14 +161,15 @@ proc animaui =
       this.top = header.bottom
       this.bottom = timelinePanel.top
 
-      - UiRect() as scenebg:
+      - UiRect.new as scenebg:
         this.fill scene
         this.color[] = "202020"
 
-      - SceneView() as scene:
+      - SceneView.new as scene:
         const aspectRatio = 16/9
         
         this.database = database
+        this.scene = firstScene.typedId
 
         this.binding w:
           let r = parent.w[] / parent.h[]
@@ -186,28 +191,28 @@ proc animaui =
           this.database[this.scene].currentTime = timelinePanel.currentTime[]
       
       # --- borders ---
-      - UiRect():
+      - UiRect.new:
         this.drawLayer = after scenearea
         this.top = parent.top
         this.bottom = scene.top
         this.fillHorizontal parent
         this.color[] = "10101080"
       
-      - UiRect():
+      - UiRect.new:
         this.drawLayer = after scenearea
         this.bottom = parent.bottom
         this.top = scene.bottom
         this.fillHorizontal parent
         this.color[] = "10101080"
 
-      - UiRect():
+      - UiRect.new:
         this.drawLayer = after scenearea
         this.left = parent.left
         this.right = scene.left
         this.fillVertical parent
         this.color[] = "10101080"
       
-      - UiRect():
+      - UiRect.new:
         this.drawLayer = after scenearea
         this.right = parent.right
         this.left = scene.right
@@ -225,7 +230,7 @@ proc animaui =
         #   selectedObject[] = nil
 
 
-    - TimelinePanel() as timelinePanel:
+    - TimelinePanel.new as timelinePanel:
       this.fillHorizontal parent
       bottom = parent.bottom
       h = 150
@@ -234,24 +239,24 @@ proc animaui =
         if timelinePanel.playing[]:
           timelinePanel.currentTime[] = timelinePanel.currentTime[] + e.deltaTime
     
-    - Toolbar() as toolbar:
+    - Toolbar.new as toolbar:
       top = header.bottom
       bottom = timelinePanel.top
       left = parent.left
       w = 40
 
-    - WindowHeader() as header:
+    - WindowHeader.new as header:
       this.fillHorizontal parent
       h = 40
       win.binding titleHeight: this.h[]
 
-      - Layout():
+      - Layout.new:
         left = parent.left + 10
         centerY = parent.center
         spacing = 10
         orientation = horizontal
 
-        - Button():
+        - Button.new:
           kind = suggested
           text = tr"Render"
 
@@ -259,7 +264,7 @@ proc animaui =
             # render(scene, vec2(1280, 720), "out.mp4", 30, timelinePanel.startTime[], timelinePanel.endTime[])
             render(scene, vec2(1920, 1080), "out.mp4", 30, timelinePanel.startTime[], timelinePanel.endTime[])
 
-        - Button():
+        - Button.new:
           text = tr"Add file"
 
           this.clicked.connectTo this:
@@ -276,3 +281,4 @@ proc animaui =
 when isMainModule:
   dispatch animaui
   updateTranslations()
+

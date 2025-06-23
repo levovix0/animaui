@@ -23,15 +23,17 @@ macro c(g: static string): Col =
     newCall(bindSym"color", newLit c.r, newLit c.g, newLit c.b, newLit c.a)
 
 
-proc newButton*(icon: string): Button =
+proc newButton*(parent: Uiobj, icon: string): Button =
   result = Button()
   initIfNeeded(result)
+  result.parent = parent  # workaroud
 
   result.makeLayout:
     wh = vec2(50, 40)
 
     - newMouseArea() as mouse:
       this.fill parent
+      globalY = 10  # workaround
 
       this.mouseDownAndUpInside.connectTo root:
         root.action()
@@ -54,6 +56,8 @@ proc newButton*(icon: string): Button =
       else:
         if this.accent[]: c"30"
         else: c"30"
+  
+  result.parent = nil  # workaroud
 
 
 method init*(this: WindowHeader) =
@@ -72,19 +76,19 @@ method init*(this: WindowHeader) =
         if e.double:
           e.window.maximized = not e.window.maximized
 
-      - newButton(static(staticRead "../icons/title/close.svg")) as close:
+      - this.newButton(static(staticRead "../icons/title/close.svg")) as close:
         this.right = parent.right
         this.accent[] = true
         this.action = proc =
           close this.parentWindow
       
-      - newButton(static(staticRead "../icons/title/maximize.svg")) as maximize:
+      - this.newButton(static(staticRead "../icons/title/maximize.svg")) as maximize:
         this.right = close.left
         this.action = proc =
           let win = this.parentWindow
           win.maximized = not win.maximized
       
-      - newButton(static(staticRead "../icons/title/minimize.svg")) as minimize:
+      - this.newButton(static(staticRead "../icons/title/minimize.svg")) as minimize:
         this.right = maximize.left
         this.action = proc =
           this.parentWindow.minimized = true

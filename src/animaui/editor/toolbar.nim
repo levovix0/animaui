@@ -33,12 +33,12 @@ proc newToolbarTool(icon: string): ToolbarTool =
       elif mouse.hovered[]: "383838".toColor.static
       else: "303030".toColor.static
 
-    - UiSvgImage():
+    - UiSvgImage.new:
       this.centerIn parent
       image = icon
       color = "fff".toColor.static
     
-    - MouseArea() as mouse:
+    - MouseArea.new as mouse:
       this.fill parent
 
       this.mouseDownAndUpInside.connectTo root: root.clicked.emit()
@@ -50,7 +50,7 @@ method init*(this: Toolbar) =
   this.color[] = "303030"
 
   this.makeLayout:
-    - Layout():
+    - Layout.new:
       this.fill parent
       this.spacing[] = 0
       this.orientation[] = vertical

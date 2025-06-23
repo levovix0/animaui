@@ -10,7 +10,7 @@ bin           = @["animaui/animauiEditor"]
 
 # Dependencies
 
-requires "nim >= 2.0.2"
+requires "nim == 2.2.4"
 requires "sigui >= 0.2.2"  # for working with graphics/UI
 requires "imageman"  # to write image files
 requires "cligen"  # for CLI

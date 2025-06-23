@@ -228,7 +228,10 @@ proc `currentTime=`*(this: Scene, time: Duration) =
   for currentFe_id in this.currentFrameEntities:
     let currentFe = this.database[currentFe_id]
     let pair = this.database[currentFe.pair]
+    
     pair.copyInto(currentFe)
+    currentFe.pair = pair.typedId
+    currentFe.role = FrameEntityRole.current
 
   for animation in this.animations:
     if time < animation.startTime or time > animation.endTime: continue
@@ -431,7 +434,7 @@ proc render*(scene: SceneView, resolution: Vec2, outfile: string, fps: int, from
   let renderarea = ClipRect()
   renderarea.makeLayout:
     wh = resolution
-    - UiRect():
+    - UiRect.new:
       this.fill parent
       color = "202020"
 

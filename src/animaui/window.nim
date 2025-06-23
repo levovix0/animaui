@@ -37,13 +37,13 @@ method init*(this: DecoratedWindow) =
   this.makeLayout:
     this.bindingValue this.siwinWindow.minSize: root.minSize[]
 
-    - RectShadow():
+    - RectShadow.new:
       this.fill(parent)
       radius := root.borderRadius[]
       blurRadius := root.currentBorderWidth[]
       color = color(0, 0, 0, 0.3)
 
-      - ClipRect():
+      - ClipRect.new:
         this.fill(parent, root.currentBorderWidth[])
         on root.currentBorderWidth.changed:
           this.fill(parent, root.currentBorderWidth[])
@@ -65,7 +65,7 @@ method init*(this: DecoratedWindow) =
         on root.titleHeight.changed:
           updateSiwinWindowRegions()
         
-        - UiRect():
+        - UiRect.new:
           this.fill(parent)
           color := root.backgroundColor[]
 
