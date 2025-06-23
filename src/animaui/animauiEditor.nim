@@ -75,16 +75,18 @@ proc animaui =
     type CurrentCommand = object
       future: Future[void]
 
-    var currentCommand: Option[CurrentCommand]
-    let editor = Editor(currentSceneView: scene)
     let database = Database.new
+    
+    let editor = Editor(currentSceneView: scene)
     let firstScene = Scene.new
     database.add firstScene
+
+    var currentCommand: Option[CurrentCommand]
     
     addRegistredEntityTypeInfosToDatabase(database)
 
-    editor.currentScene = Scene.new
-    database.add editor.currentScene
+    editor.database = database
+    editor.currentScene = firstScene.typedId
 
 
     privateAccess CommandInvokationContext

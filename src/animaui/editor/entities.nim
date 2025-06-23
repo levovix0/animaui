@@ -350,6 +350,11 @@ proc destroy*(db: Database, entity: Entity) {.animaui_api.} =
     entity.onDestroy()
 
 
+proc new*[T: Entity](db: Database, entity: T): T =
+  db.add(entity)
+  result = entity
+
+
 
 # --- Storage ---
 

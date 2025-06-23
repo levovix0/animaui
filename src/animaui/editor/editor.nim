@@ -1,7 +1,7 @@
 import std/[importutils]
 import pkg/[vmath, siwin, localize, chronos]
 import pkg/sigui/[uibase]
-import ./[scene, commands]
+import ./[scene, commands, entities]
 
 type
   EditorRequestResultStatus* = enum
@@ -31,7 +31,8 @@ type
 
   
   Editor* = ref object of RootObj
-    currentScene*: Scene
+    database*: Database
+    currentScene*: EntityIdOf[Scene]
     currentSceneView*: SceneView
 
     startedRequest*: Event[EditorRequest]
@@ -88,7 +89,7 @@ proc editor*(ctx: CommandInvokationContext): Editor =
 
 
 proc scene*(ctx: CommandInvokationContext): Scene =
-  ctx.editor.currentScene
+  ctx.database[ctx.editor.currentScene]
 
 
 proc getPoint*(editor: Editor, args: EditorPointRequest): Future[EditorRequestResult[Vec3]] {.gcsafe, raises: [].} =
@@ -122,7 +123,7 @@ template getRequiredPoint*(
 
 method on_mouseButton*(editor: Editor, event: MouseButtonEvent) {.base.} =
   block accept_pending_point_requests:
-    if editor.currentScene == nil:
+    if editor.database[editor.currentScene] == nil:
       break accept_pending_point_requests
 
     if editor.pendingRequests.len == 0 or editor.pendingRequests[0].kind != point:

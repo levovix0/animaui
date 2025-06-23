@@ -16,8 +16,8 @@ type
     ## - initial frame entity is the one that is created by user, it's properties are "by default" for all frames.
     ## - current frame entity is the one that is draw on each frame and the one that frequently changed by animations.
     ## `FrameEntity.pair` is initial frame for current and the other way around
-    initial
-    current
+    Initial
+    Current
 
   FrameEntity* = ref object of Entity
     scene*: EntityIdOf[Scene]
@@ -124,6 +124,9 @@ method deserialize*(this: FrameEntity, s: string, i: var int): DeserializeStatus
   this.pair.deserializeData(s, i)
 
 
+method transferProperties*(initial: FrameEntity, current: FrameEntity) {.base, animaui_api.} =
+  discard
+
 
 # --- SceneEntity ---
 
@@ -200,21 +203,26 @@ proc add*(this: Scene, entity: SceneEntity) =
   this.sceneEntities.add entity.typedId
 
 
-proc add*(this: Scene, entity: FrameEntity) =
+proc add*(this: Scene, initialE: FrameEntity) =
   defer: this.changed.emit(this)
-  doassert entity.role == FrameEntityRole.initial
+  assert initialE.role == Initial
+  assert initialE.scene.EntityId == 0.EntityId
 
-  this.initialFrameEntities.add entity.typedId
+  initialE.scene = this.typedId
+
+  this.initialFrameEntities.add initialE.typedId
   
-  let pair = entity.clone
-  this.database.add pair
+  let currentE = initialE.clone
+  this.database.add currentE
 
-  pair.role = FrameEntityRole.current
+  currentE.role = Current
   
-  pair.pair = entity.typedId
-  entity.pair = pair.typedId
+  currentE.pair = initialE.typedId
+  initialE.pair = currentE.typedId
 
-  this.currentFrameEntities.add pair.typedId
+  this.currentFrameEntities.add currentE.typedId
+  
+  transferProperties(initialE, currentE)
 
 
 iterator animations*(this: Scene): Animation =
@@ -227,11 +235,9 @@ iterator animations*(this: Scene): Animation =
 proc `currentTime=`*(this: Scene, time: Duration) =
   for currentFe_id in this.currentFrameEntities:
     let currentFe = this.database[currentFe_id]
-    let pair = this.database[currentFe.pair]
+    let initial = this.database[currentFe.pair]
     
-    pair.copyInto(currentFe)
-    currentFe.pair = pair.typedId
-    currentFe.role = FrameEntityRole.current
+    transferProperties(initial, currentFe)
 
   for animation in this.animations:
     if time < animation.startTime or time > animation.endTime: continue
@@ -281,6 +287,8 @@ method serialize*(this: SiguiEntity, s: var string): SerializeStatus {.animaui_a
   this.typeof.version.serializeData(s)
 
   this.kind.serializeData(s)
+  this.color.serializeData(s)
+  this.opacity.serializeData(s)
 
 
 proc setKind*(this: SiguiEntity, kind: SiguiEntityKind) =
@@ -326,6 +334,8 @@ method deserialize*(this: SiguiEntity, s: string, i: var int): DeserializeStatus
   this.kind.deserializeData(s, i)
   {.cast(gcsafe).}:
     this.setKind(this.kind)
+  this.color.deserializeData(s, i)
+  this.opacity.deserializeData(s, i)
 
 
 method onDestroy*(this: SiguiEntity) {.animaui_api.} =
@@ -336,7 +346,17 @@ method onDestroy*(this: SiguiEntity) {.animaui_api.} =
 
 
 method draw*(this: SiguiEntity, ctx: EntityDrawContext) {.animaui_api.} =
+  ctx.siguiCtx.offset += ctx.sceneView.globalXy
   this.uiObj.draw(ctx.siguiCtx)
+  ctx.siguiCtx.offset -= ctx.sceneView.globalXy
+
+
+method transferProperties*(initial: SiguiEntity, current: FrameEntity) {.animaui_api.} =
+  let current = current.SiguiEntity
+  initial.copyInto(current)
+  current.role = Current
+  current.pair = initial.FrameEntity.typedId
+  current.changed.emit(current)
 
 
 

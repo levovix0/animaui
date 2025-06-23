@@ -18,13 +18,14 @@ proc command_add_rect*(ctx: CommandInvokationContext) {.async: (raises: [Excepti
     r.h = -r.h
   
   {.cast(gcsafe).}:
-    let obj = SiguiEntity()
-    obj.pos = r.xy
-    obj.size = r.wh
+    let obj = ctx.database.new SiguiEntity()
+    obj.pos = r.xy.sceneToPx(ctx.editor.currentSceneView)
+    obj.size = r.wh.sceneToPx(ctx.editor.currentSceneView)
+    obj.color = "ffffff".color
+    obj.opacity = 1
     obj.setKind(rect)
-
-    obj.scene = ctx.editor.currentScene.typedId
     
-    ctx.database.add obj
-    ctx.database[obj.scene].add obj
+    ctx.scene.add obj
+
+    redraw ctx.editor.currentSceneView
 
